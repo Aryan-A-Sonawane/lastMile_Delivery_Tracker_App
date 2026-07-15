@@ -4,7 +4,7 @@ A delivery management platform where customers and admins create orders with **a
 charges**, agents are **assigned intelligently**, and customers are **notified and can track live**
 at every step. Built as a full-stack logistics engineering project.
 
-- **Live app:** _<add your Vercel URL here after deploy — see [docs/DEPLOY.md](docs/DEPLOY.md)>_
+- **Live app:** [Deployed App](https://last-mile-delivery-tracker-app.vercel.app)
 - **Demo logins** (after seeding) — password **`Password123!`**:
   - Admin — `admin@lastmile.test`
   - Agents — `agent1@lastmile.test`, `agent2@lastmile.test`, `agent3@lastmile.test`
