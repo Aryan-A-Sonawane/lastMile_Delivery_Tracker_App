@@ -1,0 +1,386 @@
+// Last-Mile Delivery Tracker — Prisma schema
+// Docs: https://pris.ly/d/prisma-schema
+//
+// Design notes (see docs/BLUEPRINT.md §6):
+//  • Rate cards and COD configs are VERSIONED (effectiveFrom/To + isActive) so
+//    admins can change pricing without corrupting historical orders.
+//  • Each Order stores an immutable `chargeBreakdown` snapshot + resolved money
+//    fields, so it stays correct even after rate cards change.
+//  • OrderStatusHistory and Assignment are append-only audit logs (never mutated).
+//  • Zone detection is decoupled via Area(pincode → zone), fully admin-configurable.
+//  • Money is stored as Decimal; weights as Decimal(·,3). The pure domain engine
+//    works in `number`, so route handlers convert Decimal→number at the boundary.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled (pgBouncer) connection for the app
+  directUrl = env("DIRECT_URL") // direct connection for migrations
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  CUSTOMER
+  AGENT
+  ADMIN
+}
+
+enum OrderType {
+  B2B
+  B2C
+}
+
+enum PaymentType {
+  PREPAID
+  COD
+}
+
+/// Rate-card applicability: same-zone (INTRA) vs cross-zone (INTER).
+enum RateScope {
+  INTRA
+  INTER
+}
+
+enum CodMode {
+  FLAT
+  PERCENT
+}
+
+enum OrderStatus {
+  CREATED
+  ASSIGNED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  RESCHEDULED
+}
+
+enum AgentStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+}
+
+enum AssignmentMethod {
+  MANUAL
+  AUTO
+}
+
+/// Who performed an action in the audit trail. SYSTEM = automated (no profile).
+enum ActorRole {
+  CUSTOMER
+  AGENT
+  ADMIN
+  SYSTEM
+}
+
+enum FailureReason {
+  CUSTOMER_UNAVAILABLE
+  WRONG_ADDRESS
+  REFUSED
+  DAMAGED
+  OTHER
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Identity & agents
+// ---------------------------------------------------------------------------
+
+/// Application profile linked 1:1 to a Supabase `auth.users` row.
+/// `id` equals the Supabase auth user id (a UUID). Supabase owns identity &
+/// password storage; this table holds app-level data and the authorization role.
+model Profile {
+  id        String   @id @db.Uuid
+  email     String   @unique
+  name      String
+  phone     String?
+  role      Role     @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agentProfile     AgentProfile?
+  ordersAsCustomer Order[]        @relation("CustomerOrders")
+  ordersCreated    Order[]        @relation("CreatedOrders")
+  notifications    Notification[]
+
+  @@map("profiles")
+}
+
+/// Delivery-agent operational state. Availability is modelled by `status` plus
+/// `activeOrders < maxActiveOrders` (used by the auto-assignment engine).
+model AgentProfile {
+  id              String      @id @default(cuid())
+  profileId       String      @unique @db.Uuid
+  status          AgentStatus @default(OFFLINE)
+  currentLat      Float?
+  currentLng      Float?
+  homeZoneId      String?
+  maxActiveOrders Int         @default(5)
+  activeOrders    Int         @default(0)
+  rating          Float       @default(5)
+  lastLocationAt  DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  profile       Profile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  homeZone      Zone?        @relation("ZoneAgents", fields: [homeZoneId], references: [id])
+  currentOrders Order[]      @relation("AgentOrders")
+  assignments   Assignment[]
+
+  @@index([status])
+  @@index([homeZoneId])
+  @@map("agent_profiles")
+}
+
+// ---------------------------------------------------------------------------
+// Zones & areas (admin-configurable zone detection)
+// ---------------------------------------------------------------------------
+
+model Zone {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  description String?
+  centerLat   Float?
+  centerLng   Float?
+  polygon     Json? // optional GeoJSON polygon for the Tier-2 map editor
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  areas        Area[]
+  agents       AgentProfile[] @relation("ZoneAgents")
+  pickupOrders Order[]        @relation("PickupZone")
+  dropOrders   Order[]        @relation("DropZone")
+
+  @@map("zones")
+}
+
+/// Maps a pincode (and human-readable area name) to exactly one zone. This is
+/// the source of truth for zone detection.
+model Area {
+  id        String   @id @default(cuid())
+  name      String
+  pincode   String   @unique
+  zoneId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  zone Zone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([zoneId])
+  @@map("areas")
+}
+
+// ---------------------------------------------------------------------------
+// Pricing configuration (versioned — no hardcoding)
+// ---------------------------------------------------------------------------
+
+/// A rate card for a given (orderType, scope). Versioned via effective dates +
+/// isActive so pricing changes never rewrite historical orders.
+model RateCard {
+  id                  String    @id @default(cuid())
+  orderType           OrderType
+  scope               RateScope
+  baseRate            Decimal   @db.Decimal(10, 2)
+  perKgRate           Decimal   @db.Decimal(10, 2)
+  minChargeableWeight Decimal   @default(0.5) @db.Decimal(10, 3)
+  effectiveFrom       DateTime  @default(now())
+  effectiveTo         DateTime?
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([orderType, scope, isActive])
+  @@map("rate_cards")
+}
+
+/// COD surcharge per order type. Versioned like rate cards.
+model CodConfig {
+  id            String    @id @default(cuid())
+  orderType     OrderType
+  mode          CodMode
+  amount        Decimal   @db.Decimal(10, 2)
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([orderType, isActive])
+  @@map("cod_configs")
+}
+
+/// Global key/value settings (e.g. volumetricDivisor, currency). Keeps magic
+/// numbers out of code.
+model Setting {
+  key         String   @id
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("settings")
+}
+
+// ---------------------------------------------------------------------------
+// Orders & audit trail
+// ---------------------------------------------------------------------------
+
+model Order {
+  id             String @id @default(cuid())
+  trackingNumber String @unique
+  customerId     String @db.Uuid
+  createdById    String @db.Uuid
+
+  // Pickup
+  pickupAddress String
+  pickupPincode String
+  pickupZoneId  String
+  pickupLat     Float?
+  pickupLng     Float?
+
+  // Drop
+  dropAddress String
+  dropPincode String
+  dropZoneId  String
+  dropLat     Float?
+  dropLng     Float?
+
+  // Package
+  lengthCm           Decimal @db.Decimal(10, 2)
+  breadthCm          Decimal @db.Decimal(10, 2)
+  heightCm           Decimal @db.Decimal(10, 2)
+  actualWeightKg     Decimal @db.Decimal(10, 3)
+  volumetricWeightKg Decimal @db.Decimal(10, 3)
+  billableWeightKg   Decimal @db.Decimal(10, 3)
+
+  orderType   OrderType
+  paymentType PaymentType
+
+  // Immutable pricing snapshot (full RateBreakdown) + resolved totals
+  chargeBreakdown Json
+  totalCharge     Decimal @db.Decimal(10, 2)
+  currency        String  @default("INR")
+
+  status         OrderStatus @default(CREATED)
+  currentAgentId String?
+  scheduledDate  DateTime?
+  attemptNumber  Int         @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer     Profile       @relation("CustomerOrders", fields: [customerId], references: [id])
+  createdBy    Profile       @relation("CreatedOrders", fields: [createdById], references: [id])
+  pickupZone   Zone          @relation("PickupZone", fields: [pickupZoneId], references: [id])
+  dropZone     Zone          @relation("DropZone", fields: [dropZoneId], references: [id])
+  currentAgent AgentProfile? @relation("AgentOrders", fields: [currentAgentId], references: [id])
+
+  statusHistory      OrderStatusHistory[]
+  assignments        Assignment[]
+  rescheduleRequests RescheduleRequest[]
+  notifications      Notification[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([currentAgentId])
+  @@index([pickupZoneId])
+  @@index([dropZoneId])
+  @@map("orders")
+}
+
+/// Append-only status audit log. Every status change writes one row with the
+/// actor and timestamp. Rows are never updated or deleted.
+model OrderStatusHistory {
+  id        String         @id @default(cuid())
+  orderId   String
+  status    OrderStatus
+  note      String?
+  reason    FailureReason? // set when status == FAILED
+  actorId   String? // Profile id, or null for SYSTEM (kept as an id, not a hard FK)
+  actorRole ActorRole
+  lat       Float?
+  lng       Float?
+  createdAt DateTime       @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("order_status_history")
+}
+
+/// Append-only record of each (re)assignment, with the reasoning for auto-assign.
+model Assignment {
+  id            String           @id @default(cuid())
+  orderId       String
+  agentId       String
+  assignedById  String? // Profile id (null for SYSTEM/auto)
+  method        AssignmentMethod
+  reason        Json? // score / distance / zone / load explanation
+  attemptNumber Int              @default(1)
+  createdAt     DateTime         @default(now())
+
+  order Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  agent AgentProfile @relation(fields: [agentId], references: [id])
+
+  @@index([orderId])
+  @@index([agentId])
+  @@map("assignments")
+}
+
+model RescheduleRequest {
+  id            String   @id @default(cuid())
+  orderId       String
+  requestedDate DateTime
+  reason        String?
+  createdById   String?  @db.Uuid
+  createdAt     DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("reschedule_requests")
+}
+
+/// Notification outbox. `idempotencyKey` prevents duplicate sends on retries.
+model Notification {
+  id                String              @id @default(cuid())
+  userId            String?             @db.Uuid
+  orderId           String?
+  channel           NotificationChannel
+  type              String
+  payload           Json
+  status            NotificationStatus  @default(PENDING)
+  providerMessageId String?
+  idempotencyKey    String              @unique
+  error             String?
+  readAt            DateTime?
+  sentAt            DateTime?
+  createdAt         DateTime            @default(now())
+
+  user  Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  order Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([orderId])
+  @@map("notifications")
+}
