@@ -30,11 +30,23 @@ type BulkResult = {
   credentials?: { email: string; tempPassword: string }[];
 };
 
-function downloadTemplate(columns: CsvColumn[], filename: string) {
-  const example: Record<string, string> = {};
-  for (const c of columns) example[c.key] = c.example ?? "";
-  const csv = Papa.unparse({ fields: columns.map((c) => c.key), data: [example] });
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+function downloadTemplate(
+  columns: CsvColumn[],
+  filename: string,
+  samples?: Record<string, string>[],
+) {
+  const fields = columns.map((c) => c.key);
+  // Use provided sample rows, else a single row built from each column's example.
+  const rows =
+    samples && samples.length > 0
+      ? samples.map((s) => {
+          const row: Record<string, string> = {};
+          for (const c of columns) row[c.key] = s[c.key] ?? c.example ?? "";
+          return row;
+        })
+      : [Object.fromEntries(columns.map((c) => [c.key, c.example ?? ""]))];
+  const csv = Papa.unparse({ fields, data: rows });
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -49,6 +61,7 @@ export function CsvImport({
   endpoint,
   templateFilename = "template.csv",
   triggerLabel = "Import CSV",
+  samples,
   onDone,
 }: {
   title: string;
@@ -56,6 +69,7 @@ export function CsvImport({
   endpoint: string;
   templateFilename?: string;
   triggerLabel?: string;
+  samples?: Record<string, string>[];
   onDone?: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -126,7 +140,7 @@ export function CsvImport({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => downloadTemplate(columns, templateFilename)}
+            onClick={() => downloadTemplate(columns, templateFilename, samples)}
           >
             <Download className="size-4" /> Download template
           </Button>

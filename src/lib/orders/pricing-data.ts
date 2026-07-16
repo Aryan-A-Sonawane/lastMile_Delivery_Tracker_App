@@ -7,13 +7,22 @@ import {
 import type { QuoteConfig } from "./pricing";
 
 /**
- * Loads all pricing configuration from the database into the pure
+ * Loads pricing configuration from the database into the pure
  * {@link QuoteConfig} shape (converting Decimal → number at the boundary).
  * Shared by the quote endpoint and order creation.
+ *
+ * `pincodes` scopes the Area lookup to just the pincodes being priced (pickup +
+ * drop) instead of loading the whole serviceable-area table — a big win once
+ * thousands of areas are onboarded. Zone detection only needs those rows.
  */
-export async function loadQuoteConfig(): Promise<QuoteConfig> {
+export async function loadQuoteConfig(pincodes?: string[]): Promise<QuoteConfig> {
+  const areaWhere =
+    pincodes && pincodes.length > 0
+      ? { pincode: { in: [...new Set(pincodes.map((p) => p.trim()))] } }
+      : undefined;
+
   const [areas, rateCards, codConfigs, settingsMap] = await Promise.all([
-    prisma.area.findMany({ select: { pincode: true, zoneId: true } }),
+    prisma.area.findMany({ where: areaWhere, select: { pincode: true, zoneId: true } }),
     prisma.rateCard.findMany(),
     prisma.codConfig.findMany(),
     getSettingsMap(),

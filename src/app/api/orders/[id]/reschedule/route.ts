@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { withApi, forbidden, notFound } from "@/lib/api/errors";
@@ -66,8 +66,10 @@ export const POST = withApi(async (req: NextRequest, { params }: Ctx) => {
     where: { id },
     select: { trackingNumber: true, status: true },
   });
-  await broadcastOrderEvent(order.trackingNumber, { status: order.status });
-  await notifyOrderStatus(id);
+  after(async () => {
+    await broadcastOrderEvent(order.trackingNumber, { status: order.status });
+    await notifyOrderStatus(id);
+  });
 
   return NextResponse.json({ data: { reassigned, status: order.status } });
 });

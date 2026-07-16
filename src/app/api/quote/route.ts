@@ -10,7 +10,7 @@ import { resolveQuote } from "@/lib/orders/pricing";
 // (Phase 3) recomputes server-side and snapshots the result.
 export const POST = withApi(async (req: NextRequest) => {
   const input = quoteRequestSchema.parse(await req.json());
-  const config = await loadQuoteConfig();
+  const config = await loadQuoteConfig([input.pickupPincode, input.dropPincode]);
   const result = resolveQuote(config, input);
   return NextResponse.json({ data: result });
 });

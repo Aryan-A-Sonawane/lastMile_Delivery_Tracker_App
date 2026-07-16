@@ -25,7 +25,7 @@ export async function createOrder({
   createdById,
   createdByRole,
 }: CreateOrderArgs): Promise<Order> {
-  const config = await loadQuoteConfig();
+  const config = await loadQuoteConfig([input.pickupPincode, input.dropPincode]);
   const { pickupZoneId, dropZoneId, breakdown } = resolveQuote(config, {
     pickupPincode: input.pickupPincode,
     dropPincode: input.dropPincode,

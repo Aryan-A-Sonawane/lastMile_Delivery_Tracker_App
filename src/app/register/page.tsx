@@ -95,8 +95,16 @@ export default function RegisterPage() {
               <Input id="password" type="password" autoComplete="new-password" value={form.password} onChange={(e) => set("password", e.target.value)} required minLength={8} />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="phone">Phone {accountType === "AGENT" && <span className="text-muted-foreground">(recommended)</span>}</Label>
-              <Input id="phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+              <Label htmlFor="phone">Phone</Label>
+              <Input
+                id="phone"
+                type="tel"
+                autoComplete="tel"
+                placeholder="+91 90000 00000"
+                value={form.phone}
+                onChange={(e) => set("phone", e.target.value)}
+                required
+              />
             </div>
             {accountType === "AGENT" && (
               <p className="text-xs text-muted-foreground">

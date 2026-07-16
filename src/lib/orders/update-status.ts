@@ -78,22 +78,16 @@ export async function updateOrderStatus({
     });
 
     if (freesAgent && order.currentAgentId) {
-      const agent = await tx.agentProfile.findUnique({
-        where: { id: order.currentAgentId },
-      });
-      if (agent && agent.activeOrders > 0) {
-        const activeOrders = agent.activeOrders - 1;
-        await tx.agentProfile.update({
-          where: { id: order.currentAgentId },
-          data: {
-            activeOrders,
-            status:
-              agent.status === "BUSY" && activeOrders < agent.maxActiveOrders
-                ? "AVAILABLE"
-                : agent.status,
-          },
-        });
-      }
+      // Single round trip: decrement load and free a BUSY agent when it drops
+      // below capacity (replaces a find + update).
+      await tx.$executeRaw`
+        UPDATE agent_profiles
+        SET "activeOrders" = GREATEST("activeOrders" - 1, 0),
+            status = CASE
+              WHEN status = 'BUSY'::"AgentStatus" AND ("activeOrders" - 1) < "maxActiveOrders"
+              THEN 'AVAILABLE'::"AgentStatus" ELSE status END,
+            "updatedAt" = now()
+        WHERE id = ${order.currentAgentId} AND "activeOrders" > 0`;
     }
 
     return updated;

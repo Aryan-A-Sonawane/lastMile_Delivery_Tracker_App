@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth/session";
 import { withApi } from "@/lib/api/errors";
@@ -27,9 +27,11 @@ export const POST = withApi(async (req: NextRequest, { params }: Ctx) => {
     assignedById: profile.id,
   });
 
-  await broadcastOrderEvent(result.order.trackingNumber, {
-    status: result.order.status,
+  after(async () => {
+    await broadcastOrderEvent(result.order.trackingNumber, {
+      status: result.order.status,
+    });
+    await notifyOrderStatus(result.order.id);
   });
-  await notifyOrderStatus(result.order.id);
   return NextResponse.json({ data: result });
 });

@@ -69,6 +69,10 @@ function OrdersContent() {
               columns={ORDER_CSV_COLUMNS}
               endpoint="/api/admin/orders/bulk"
               templateFilename="orders-template.csv"
+              samples={[
+                { customerEmail: "customer1@lastmile.test", pickupPincode: "560001", dropPincode: "560041", pickupAddress: "1 MG Road", dropAddress: "9 South Ave", lengthCm: "40", breadthCm: "30", heightCm: "20", actualWeightKg: "3", orderType: "B2C", paymentType: "PREPAID" },
+                { customerEmail: "customer2@lastmile.test", pickupPincode: "110001", dropPincode: "110045", pickupAddress: "Connaught Place, Block A", dropAddress: "Dwarka Sector 7", lengthCm: "25", breadthCm: "20", heightCm: "15", actualWeightKg: "1.5", orderType: "B2B", paymentType: "COD" },
+              ]}
               onDone={() => qc.invalidateQueries({ queryKey: ["orders"] })}
             />
             <Button asChild size="sm">

@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth/session";
 import { withApi, badRequest, notFound, forbidden } from "@/lib/api/errors";
@@ -51,11 +51,9 @@ export const POST = withApi(async (req: NextRequest, { params }: Ctx) => {
     lng: input.lng,
   });
 
-  await broadcastOrderEvent(updated.trackingNumber, { status: updated.status });
-  await notifyOrderStatus(updated.id);
-
   // When the final allowed attempt fails, the shipment is returned to sender.
   let finalStatus = updated.status;
+  let rtsTracking: string | null = null;
   if (updated.status === "FAILED" && !hasAttemptsRemaining(updated.attemptNumber)) {
     const rts = await updateOrderStatus({
       orderId: id,
@@ -64,10 +62,20 @@ export const POST = withApi(async (req: NextRequest, { params }: Ctx) => {
       actorRole: "SYSTEM",
       note: `Returned to sender after ${MAX_DELIVERY_ATTEMPTS} failed delivery attempts`,
     });
-    await broadcastOrderEvent(rts.trackingNumber, { status: rts.status });
-    await notifyOrderStatus(rts.id);
     finalStatus = rts.status;
+    rtsTracking = rts.trackingNumber;
   }
+
+  // Realtime push + notifications are best-effort; run them after the response
+  // so the status change returns immediately.
+  after(async () => {
+    await broadcastOrderEvent(updated.trackingNumber, { status: updated.status });
+    await notifyOrderStatus(updated.id);
+    if (rtsTracking) {
+      await broadcastOrderEvent(rtsTracking, { status: "RETURN_TO_SENDER" });
+      await notifyOrderStatus(id);
+    }
+  });
 
   return NextResponse.json({ data: { ...updated, status: finalStatus } });
 });

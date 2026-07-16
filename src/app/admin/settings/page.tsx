@@ -45,7 +45,7 @@ function useUpsertSetting() {
 
 function AutoAssignCard({ setting }: { setting: Setting | undefined }) {
   const qc = useQueryClient();
-  const enabled = (setting?.value ?? "true").trim().toLowerCase() === "true";
+  const enabled = (setting?.value ?? "false").trim().toLowerCase() === "true";
 
   const toggle = useMutation({
     mutationFn: (next: boolean) =>

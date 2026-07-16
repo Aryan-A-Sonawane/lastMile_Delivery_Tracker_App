@@ -20,7 +20,7 @@ async function seedSettings() {
     { key: "volumetricDivisor", value: "5000", description: "Divisor for volumetric weight (L×B×H ÷ divisor)" },
     { key: "currency", value: "INR", description: "Display currency for charges" },
     { key: "defaultZoneRadiusKm", value: "12", description: "Default zone radius in km (per-zone override allowed)" },
-    { key: "autoAssignEnabled", value: "true", description: "Auto-assign new orders to the best available agent (off = manual assignment)" },
+    { key: "autoAssignEnabled", value: "false", description: "Auto-assign new orders to the best available agent (off = manual assignment)" },
   ];
   for (const s of settings) {
     await prisma.setting.upsert({

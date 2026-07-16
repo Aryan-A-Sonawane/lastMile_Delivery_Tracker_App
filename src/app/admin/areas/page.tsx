@@ -231,6 +231,11 @@ export default function AreasPage() {
             columns={AREA_CSV_COLUMNS}
             endpoint="/api/admin/areas/bulk"
             templateFilename="areas-template.csv"
+            samples={[
+              { pincode: "560001", zoneCode: "BLR-N", name: "MG Road" },
+              { pincode: "560041", zoneCode: "BLR-S", name: "Jayanagar" },
+              { pincode: "560066", zoneCode: "BLR-E", name: "Whitefield" },
+            ]}
             onDone={() => qc.invalidateQueries({ queryKey: ["areas"] })}
           />
         }

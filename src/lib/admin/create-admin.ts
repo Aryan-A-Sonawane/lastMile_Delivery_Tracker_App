@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail, isEmailConfigured } from "@/lib/notifications/email";
 import { badRequest } from "@/lib/api/errors";
+import { getAppUrl } from "@/lib/config/app-url";
 
 async function findUserByEmail(supabase: SupabaseClient, email: string) {
   const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
@@ -65,7 +66,7 @@ export async function createOrPromoteAdmin(input: {
   });
 
   if (isEmailConfigured()) {
-    const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const base = getAppUrl();
     const loginUrl = `${base}/login`;
     const body = created
       ? `You've been added as an administrator.\nSign in at ${loginUrl}\nEmail: ${input.email}\nTemporary password: ${tempPassword}`

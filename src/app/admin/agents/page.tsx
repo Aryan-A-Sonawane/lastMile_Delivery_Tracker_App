@@ -130,6 +130,10 @@ export default function AdminAgentsPage() {
               columns={csvColumns}
               endpoint="/api/admin/agents/bulk"
               templateFilename="agents-template.csv"
+              samples={[
+                { name: "Ravi Kumar", email: "ravi@example.com", phone: "+91 90000 00001", homeZoneCode: "BLR-N", maxActiveOrders: "5" },
+                { name: "Meena Rao", email: "meena@example.com", phone: "+91 90000 00002", homeZoneCode: "BLR-S", maxActiveOrders: "8" },
+              ]}
               onDone={() => qc.invalidateQueries({ queryKey: ["agents"] })}
             />
             <Dialog open={open} onOpenChange={setOpen}>

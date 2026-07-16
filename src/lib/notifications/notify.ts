@@ -2,6 +2,7 @@ import { Prisma, type NotificationChannel } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { buildStatusMessage } from "./templates";
 import { sendEmail, isEmailConfigured } from "./email";
+import { sendSms, isSmsConfigured } from "./sms";
 
 const CHANNELS: NotificationChannel[] = ["IN_APP", "EMAIL", "SMS"];
 
@@ -67,14 +68,20 @@ export async function notifyOrderStatus(orderId: string): Promise<void> {
             data: { status: "SENT", sentAt: new Date(), providerMessageId: res.messageId },
           });
         } else if (channel === "SMS") {
-          // Mock SMS driver — records the message; swap for a real provider later.
-          console.log(
-            `[SMS mock] to ${order.customer.phone ?? "n/a"}: ${msg.sms}`,
-          );
-          await prisma.notification.update({
-            where: { id: notificationId },
-            data: { status: "SENT", sentAt: new Date(), providerMessageId: "mock" },
-          });
+          // Real SMS via Twilio when configured, else a mock logger.
+          if (isSmsConfigured() && order.customer.phone) {
+            const res = await sendSms(order.customer.phone, msg.sms);
+            await prisma.notification.update({
+              where: { id: notificationId },
+              data: { status: "SENT", sentAt: new Date(), providerMessageId: res.id },
+            });
+          } else {
+            console.log(`[SMS mock] to ${order.customer.phone ?? "n/a"}: ${msg.sms}`);
+            await prisma.notification.update({
+              where: { id: notificationId },
+              data: { status: "SENT", sentAt: new Date(), providerMessageId: "mock" },
+            });
+          }
         } else {
           // IN_APP — the row itself is the delivery.
           await prisma.notification.update({

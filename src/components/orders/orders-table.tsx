@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Table,
   TableBody,
@@ -38,6 +38,8 @@ export function OrdersTable({
   showCustomer?: boolean;
   showAgent?: boolean;
 }) {
+  const router = useRouter();
+
   if (orders.length === 0) {
     return (
       <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -63,11 +65,18 @@ export function OrdersTable({
         </TableHeader>
         <TableBody>
           {orders.map((o) => (
-            <TableRow key={o.id} className="cursor-pointer">
-              <TableCell className="font-mono text-xs">
-                <Link href={`${basePath}/${o.id}`} className="hover:underline">
-                  {o.trackingNumber}
-                </Link>
+            <TableRow
+              key={o.id}
+              className="cursor-pointer hover:bg-muted/50"
+              onClick={() => router.push(`${basePath}/${o.id}`)}
+              tabIndex={0}
+              role="link"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") router.push(`${basePath}/${o.id}`);
+              }}
+            >
+              <TableCell className="font-mono text-xs font-medium text-primary">
+                {o.trackingNumber}
               </TableCell>
               {showCustomer && <TableCell>{o.customer?.name ?? "—"}</TableCell>}
               <TableCell className="text-sm">

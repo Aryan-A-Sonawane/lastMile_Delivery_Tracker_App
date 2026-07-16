@@ -5,10 +5,10 @@ import { notifyOrderStatus } from "@/lib/notifications/notify";
 
 export const AUTO_ASSIGN_KEY = "autoAssignEnabled";
 
-/** Whether new orders are auto-assigned. Defaults ON when the setting is absent. */
+/** Whether new orders are auto-assigned. Defaults OFF when the setting is absent. */
 export async function isAutoAssignEnabled(): Promise<boolean> {
   const s = await prisma.setting.findUnique({ where: { key: AUTO_ASSIGN_KEY } });
-  return s ? s.value.trim().toLowerCase() === "true" : true;
+  return s ? s.value.trim().toLowerCase() === "true" : false;
 }
 
 /**

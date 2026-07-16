@@ -6,9 +6,19 @@ import { areaInputSchema } from "@/lib/validation/config";
 
 export const GET = withApi(async () => {
   await requireRole("ADMIN");
+  // Only the fields the areas table + edit dialog need — the full table can be
+  // ~1.4k rows, so we keep the payload lean (no lat/lng/timestamps).
   const areas = await prisma.area.findMany({
     orderBy: { pincode: "asc" },
-    include: { zone: { select: { id: true, name: true, code: true } } },
+    select: {
+      id: true,
+      pincode: true,
+      name: true,
+      city: true,
+      state: true,
+      zoneId: true,
+      zone: { select: { id: true, name: true, code: true } },
+    },
   });
   return NextResponse.json({ data: areas });
 });

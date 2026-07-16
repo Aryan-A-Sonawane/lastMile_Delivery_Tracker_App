@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail, isEmailConfigured } from "@/lib/notifications/email";
 import { badRequest, conflict } from "@/lib/api/errors";
+import { getAppUrl } from "@/lib/config/app-url";
 
 export type CreateAgentInput = {
   name: string;
@@ -84,7 +85,7 @@ export async function createAgent(input: CreateAgentInput): Promise<{
   });
 
   if (isEmailConfigured()) {
-    const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const base = getAppUrl();
     const loginUrl = `${base}/login`;
     sendEmail({
       to: input.email,

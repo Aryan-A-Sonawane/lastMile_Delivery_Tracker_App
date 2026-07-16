@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse, after } from "next/server";
 import type { Prisma, OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProfile, requireRole } from "@/lib/auth/session";
@@ -28,13 +28,21 @@ export const GET = withApi(async (req: NextRequest) => {
   let where: Prisma.OrderWhereInput = {};
 
   if (scope === "customer") {
-    where = { customerId: profile.id };
+    // Admins land here only when *previewing* the customer view — show a
+    // representative sample of real orders so the UI isn't empty (this is a
+    // layout preview, not the admin's own account).
+    where = isAdmin ? {} : { customerId: profile.id };
   } else if (scope === "agent") {
-    const agent = await prisma.agentProfile.findUnique({
-      where: { profileId: profile.id },
-      select: { id: true },
-    });
-    where = { currentAgentId: agent?.id ?? "__none__" };
+    if (isAdmin) {
+      // Preview: show assigned orders so the agent's "my deliveries" is populated.
+      where = { currentAgentId: { not: null } };
+    } else {
+      const agent = await prisma.agentProfile.findUnique({
+        where: { profileId: profile.id },
+        select: { id: true },
+      });
+      where = { currentAgentId: agent?.id ?? "__none__" };
+    }
   } else {
     const status = params.get("status");
     const zoneId = params.get("zoneId");
@@ -81,18 +89,21 @@ export const POST = withApi(async (req: NextRequest) => {
     createdByRole: customerId !== profile.id ? "ADMIN" : "CUSTOMER",
   });
 
-  await notifyOrderStatus(order.id);
-
   // Auto-assign to the best available agent when the toggle is ON (no-op when
   // OFF or when no agent is free — the order then waits for manual assignment).
   const assignedAgentId = await autoAssignIfEnabled(order.id, profile.id);
-  if (assignedAgentId) {
-    await broadcastOrderEvent(order.trackingNumber, { status: "ASSIGNED" });
-    await notifyOrderStatus(order.id);
-    // Return the order reflecting its post-assignment state.
-    const assigned = await prisma.order.findUnique({ where: { id: order.id } });
-    return NextResponse.json({ data: assigned ?? order }, { status: 201 });
-  }
+  const assigned = assignedAgentId
+    ? await prisma.order.findUnique({ where: { id: order.id } })
+    : null;
 
-  return NextResponse.json({ data: order }, { status: 201 });
+  // Notifications + realtime push are best-effort — send after the response.
+  after(async () => {
+    await notifyOrderStatus(order.id);
+    if (assignedAgentId) {
+      await broadcastOrderEvent(order.trackingNumber, { status: "ASSIGNED" });
+      await notifyOrderStatus(order.id);
+    }
+  });
+
+  return NextResponse.json({ data: assigned ?? order }, { status: 201 });
 });
