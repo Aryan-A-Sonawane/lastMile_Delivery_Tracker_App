@@ -4,6 +4,7 @@ import type { ActorRole } from "@/lib/domain/types";
 import type { OrderCreateInput } from "@/lib/validation/order";
 import { loadQuoteConfig } from "./pricing-data";
 import { resolveQuote } from "./pricing";
+import { coordsForPincodes } from "./geocode";
 import { generateTrackingNumber } from "./tracking";
 
 type CreateOrderArgs = {
@@ -36,6 +37,16 @@ export async function createOrder({
     paymentType: input.paymentType,
   });
 
+  // Stamp coordinates from our own pincode reference data when the client didn't
+  // provide a precise point — powers distance/direction scoring and the map.
+  const coords = await coordsForPincodes([input.pickupPincode, input.dropPincode]);
+  const pickupCoord = coords.get(input.pickupPincode.trim());
+  const dropCoord = coords.get(input.dropPincode.trim());
+  const pickupLat = input.pickupLat ?? pickupCoord?.lat ?? null;
+  const pickupLng = input.pickupLng ?? pickupCoord?.lng ?? null;
+  const dropLat = input.dropLat ?? dropCoord?.lat ?? null;
+  const dropLng = input.dropLng ?? dropCoord?.lng ?? null;
+
   for (let attempt = 0; attempt < 3; attempt++) {
     const trackingNumber = generateTrackingNumber();
     try {
@@ -48,13 +59,13 @@ export async function createOrder({
             pickupAddress: input.pickupAddress,
             pickupPincode: input.pickupPincode,
             pickupZoneId,
-            pickupLat: input.pickupLat ?? null,
-            pickupLng: input.pickupLng ?? null,
+            pickupLat,
+            pickupLng,
             dropAddress: input.dropAddress,
             dropPincode: input.dropPincode,
             dropZoneId,
-            dropLat: input.dropLat ?? null,
-            dropLng: input.dropLng ?? null,
+            dropLat,
+            dropLng,
             lengthCm: input.lengthCm,
             breadthCm: input.breadthCm,
             heightCm: input.heightCm,

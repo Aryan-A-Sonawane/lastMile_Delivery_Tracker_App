@@ -58,6 +58,9 @@ export const PATCH = withApi(async (req: NextRequest, { params }: Ctx) => {
       data.lastLocationAt = new Date();
     }
     if (input.currentLng !== undefined) data.currentLng = input.currentLng;
+    if (input.serviceLat !== undefined) data.serviceLat = input.serviceLat;
+    if (input.serviceLng !== undefined) data.serviceLng = input.serviceLng;
+    if (input.serviceAddress !== undefined) data.serviceAddress = input.serviceAddress;
 
     return tx.agentProfile.update({
       where: { id },

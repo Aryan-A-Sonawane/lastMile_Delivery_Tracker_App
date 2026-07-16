@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Truck } from "lucide-react";
 import { getSessionProfile } from "@/lib/auth/session";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { NotificationBell } from "@/components/notification-bell";
@@ -18,10 +19,13 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-full flex-col">
-      <header className="border-b">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3">
-          <Link href="/app" className="font-semibold">
-            Last-Mile
+      <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3">
+          <Link href="/app" className="flex items-center gap-2.5">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-brand-gradient text-white shadow-brand">
+              <Truck className="size-4" />
+            </span>
+            <span className="font-semibold">Last-Mile</span>
           </Link>
           <div className="flex items-center gap-3">
             {profile.roles.includes("ADMIN") && (
@@ -40,7 +44,7 @@ export default async function AppLayout({
           </div>
         </div>
       </header>
-      <div className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</div>
+      <div className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</div>
     </div>
   );
 }

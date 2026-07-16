@@ -50,6 +50,9 @@ export function StatusUpdatePanel({
     actorRole as ActorRole,
   );
 
+  // Agents must leave a remark explaining a failed delivery attempt.
+  const remarkRequiredForFailed = actorRole === "AGENT";
+
   const mut = useMutation({
     mutationFn: (status: string) =>
       api.post(`/api/orders/${orderId}/status`, {
@@ -65,6 +68,14 @@ export function StatusUpdatePanel({
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const update = (status: string) => {
+    if (status === "FAILED" && remarkRequiredForFailed && !note.trim()) {
+      toast.error("Add a remark explaining why the delivery failed.");
+      return;
+    }
+    mut.mutate(status);
+  };
 
   if (next.length === 0) {
     return (
@@ -102,7 +113,11 @@ export function StatusUpdatePanel({
           </div>
         )}
         <Textarea
-          placeholder="Note (optional)"
+          placeholder={
+            next.includes("FAILED") && remarkRequiredForFailed
+              ? "Remark — required if the delivery failed"
+              : "Note (optional)"
+          }
           rows={2}
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -120,7 +135,7 @@ export function StatusUpdatePanel({
                     : "secondary"
               }
               disabled={mut.isPending}
-              onClick={() => mut.mutate(s)}
+              onClick={() => update(s)}
             >
               {STATUS_LABELS[s] ?? s}
             </Button>

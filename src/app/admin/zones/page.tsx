@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MapPin, Pencil, Trash2 } from "lucide-react";
+import { MapPin, Pencil, Trash2, Plus } from "lucide-react";
 import { api } from "@/lib/api-client";
 import type { ZoneCircleView } from "@/components/admin/zone-map";
 import { PageHeader } from "@/components/common/page-header";
@@ -129,7 +129,17 @@ export default function ZonesPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Zones"
-        description="Click the map to drop a zone center. Radius defaults from Settings and is editable per zone."
+        description="Click the map to drop a zone center, or use New zone. Radius defaults from Settings and is editable per zone."
+        actions={
+          <Button
+            size="sm"
+            onClick={() =>
+              setDraft({ name: "", code: "", radiusKm: String(defaultRadius), lat: 22.6, lng: 79 })
+            }
+          >
+            <Plus className="size-4" /> New zone
+          </Button>
+        }
       />
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">

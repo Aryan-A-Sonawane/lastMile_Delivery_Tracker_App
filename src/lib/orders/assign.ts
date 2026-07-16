@@ -1,15 +1,34 @@
-import { Prisma, type Order } from "@prisma/client";
+import { Prisma, type AgentStatus, type Order } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   selectAgent,
+  scoreAgent,
   directionVector,
   type AgentCandidate,
   type ScoredAgent,
   type Vec2,
 } from "@/lib/domain/assignment";
+import type { LatLng } from "@/lib/domain/types";
 import { haversineKm } from "@/lib/domain/zones";
 import { assertTransition } from "@/lib/domain/status-machine";
 import { badRequest, conflict, notFound } from "@/lib/api/errors";
+
+/** Coordinate an agent is scored from: their fixed serving location, else live GPS. */
+type AgentGeo = {
+  serviceLat: number | null;
+  serviceLng: number | null;
+  currentLat: number | null;
+  currentLng: number | null;
+};
+function agentPoint(a: AgentGeo): LatLng | null {
+  if (a.serviceLat != null && a.serviceLng != null) {
+    return { lat: a.serviceLat, lng: a.serviceLng };
+  }
+  if (a.currentLat != null && a.currentLng != null) {
+    return { lat: a.currentLat, lng: a.currentLng };
+  }
+  return null;
+}
 
 // Statuses that still occupy an agent's committed route (not yet delivered/closed).
 const IN_FLIGHT = [
@@ -121,10 +140,7 @@ export async function assignAgent({
 
     const mapped: AgentCandidate[] = candidates.map((a) => ({
       agentId: a.id,
-      location:
-        a.currentLat != null && a.currentLng != null
-          ? { lat: a.currentLat, lng: a.currentLng }
-          : null,
+      location: agentPoint(a),
       homeZoneId: a.homeZoneId,
       activeOrders: a.activeOrders,
       maxActiveOrders: a.maxActiveOrders,
@@ -212,4 +228,106 @@ export async function assignAgent({
   });
 
   return { order: updated, agentId: chosenAgentId, method: mode, reason };
+}
+
+/** A scored agent option for the admin manual-assignment map + suggestion list. */
+export type AgentAssignmentOption = {
+  agentId: string;
+  name: string;
+  phone: string | null;
+  status: AgentStatus;
+  activeOrders: number;
+  maxActiveOrders: number;
+  loadFactor: number; // 0..1 (drives the map colour)
+  lat: number | null;
+  lng: number | null;
+  usingLiveLocation: boolean; // true → no fixed serving location set
+  homeZoneCode: string | null;
+  homeZoneName: string | null;
+  available: boolean;
+  score: number | null; // null when the agent has no location to score from
+  distanceKm: number | null;
+  sameZone: boolean;
+  reason: string;
+};
+
+/**
+ * Ranks every agent for an order (for the admin manual-assign UI): scores each
+ * from their serving location, marks availability, and returns them sorted with
+ * the best available agents first. Includes coordinates + load so the client can
+ * plot a colour-coded map and surface the top suggestions.
+ */
+export async function rankAgentsForOrder(orderId: string): Promise<{
+  pickup: LatLng | null;
+  drop: LatLng | null;
+  options: AgentAssignmentOption[];
+}> {
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!order) throw notFound("Order not found");
+
+  const agents = await prisma.agentProfile.findMany({
+    include: {
+      profile: { select: { name: true, phone: true } },
+      homeZone: { select: { code: true, name: true } },
+    },
+  });
+  const workload = await loadAgentWorkload(agents.map((a) => a.id));
+
+  const pickup =
+    order.pickupLat != null && order.pickupLng != null
+      ? { lat: order.pickupLat, lng: order.pickupLng }
+      : null;
+  const drop =
+    order.dropLat != null && order.dropLng != null
+      ? { lat: order.dropLat, lng: order.dropLng }
+      : null;
+  const ctx = { pickup, drop, pickupZoneId: order.pickupZoneId };
+
+  const options: AgentAssignmentOption[] = agents.map((a) => {
+    const point = agentPoint(a);
+    const scored = scoreAgent(
+      {
+        agentId: a.id,
+        location: point,
+        homeZoneId: a.homeZoneId,
+        activeOrders: a.activeOrders,
+        maxActiveOrders: a.maxActiveOrders,
+        committedRouteKm: workload.get(a.id)?.committedRouteKm ?? 0,
+        heading: workload.get(a.id)?.heading ?? null,
+        rating: a.rating,
+      },
+      ctx,
+    );
+    const available = a.status === "AVAILABLE" && a.activeOrders < a.maxActiveOrders;
+    return {
+      agentId: a.id,
+      name: a.profile.name,
+      phone: a.profile.phone,
+      status: a.status,
+      activeOrders: a.activeOrders,
+      maxActiveOrders: a.maxActiveOrders,
+      loadFactor: scored.loadFactor,
+      lat: point?.lat ?? null,
+      lng: point?.lng ?? null,
+      usingLiveLocation:
+        !(a.serviceLat != null && a.serviceLng != null) &&
+        a.currentLat != null &&
+        a.currentLng != null,
+      homeZoneCode: a.homeZone?.code ?? null,
+      homeZoneName: a.homeZone?.name ?? null,
+      available,
+      score: point ? scored.score : null,
+      distanceKm: scored.distanceKm,
+      sameZone: scored.sameZone,
+      reason: scored.reason,
+    };
+  });
+
+  // Available agents first (best score first), then everyone else.
+  options.sort((a, b) => {
+    if (a.available !== b.available) return a.available ? -1 : 1;
+    return (b.score ?? -1) - (a.score ?? -1) || a.name.localeCompare(b.name);
+  });
+
+  return { pickup, drop, options };
 }

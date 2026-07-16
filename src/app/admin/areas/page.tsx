@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MapPin, Search, Trash2 } from "lucide-react";
+import { MapPin, Search, Trash2, Pencil } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { zoneForPoint, type ZoneCircle } from "@/lib/domain/zones";
 import type { ZoneCircleView } from "@/components/admin/zone-map";
@@ -68,6 +68,7 @@ type Area = {
   name: string;
   city: string | null;
   state: string | null;
+  zoneId?: string;
   zone?: { name: string; code: string };
 };
 type Setting = { key: string; value: string };
@@ -85,6 +86,7 @@ export default function AreasPage() {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Pincode | null>(null);
   const [newZone, setNewZone] = useState<{ name: string; code: string; radiusKm: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; name: string; zoneId: string } | null>(null);
 
   const { data: zonesData } = useQuery({
     queryKey: ["zones"],
@@ -204,6 +206,17 @@ export default function AreasPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const editArea = useMutation({
+    mutationFn: (v: { id: string; name: string; zoneId: string }) =>
+      api.patch(`/api/admin/areas/${v.id}`, { name: v.name, zoneId: v.zoneId }),
+    onSuccess: () => {
+      toast.success("Area updated");
+      qc.invalidateQueries({ queryKey: ["areas"] });
+      setEditing(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const results = searchData?.data ?? [];
   const areas = areasData?.data ?? [];
 
@@ -226,6 +239,12 @@ export default function AreasPage() {
       <div className="grid gap-5 lg:grid-cols-[1fr_1.2fr]">
         {/* Search + selection */}
         <div className="flex flex-col gap-3">
+          <div>
+            <p className="text-sm font-medium">Add a serviceable area</p>
+            <p className="text-xs text-muted-foreground">
+              Search a locality or pincode, pick it, then add it to a zone (or create one).
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <Select value={stateSel || ANY} onValueChange={(v) => { setStateSel(v === ANY ? "" : v); setCitySel(""); }}>
               <SelectTrigger><SelectValue placeholder="State (optional)" /></SelectTrigger>
@@ -355,9 +374,19 @@ export default function AreasPage() {
                     </TableCell>
                     <TableCell className="text-sm">{a.zone ? `${a.zone.code}` : "—"}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" aria-label="Remove" onClick={() => { if (confirm(`Remove ${a.pincode}?`)) del.mutate(a.id); }}>
-                        <Trash2 className="size-4 text-destructive" />
-                      </Button>
+                      <div className="flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Edit"
+                          onClick={() => setEditing({ id: a.id, name: a.name, zoneId: a.zoneId ?? "" })}
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" aria-label="Remove" onClick={() => { if (confirm(`Remove ${a.pincode}?`)) del.mutate(a.id); }}>
+                          <Trash2 className="size-4 text-destructive" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -366,6 +395,57 @@ export default function AreasPage() {
           </div>
         )}
       </div>
+
+      {/* Edit-area dialog (rename + reassign zone) */}
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit area</DialogTitle>
+          </DialogHeader>
+          {editing && (
+            <form
+              className="grid gap-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                editArea.mutate(editing);
+              }}
+            >
+              <div className="grid gap-1.5">
+                <Label htmlFor="edit-name">Name</Label>
+                <Input
+                  id="edit-name"
+                  required
+                  value={editing.name}
+                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Zone</Label>
+                <Select
+                  value={editing.zoneId}
+                  onValueChange={(v) => setEditing({ ...editing, zoneId: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a zone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {zones.map((z) => (
+                      <SelectItem key={z.id} value={z.id}>
+                        {z.name} ({z.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={editArea.isPending || !editing.zoneId}>
+                  {editArea.isPending ? "Saving…" : "Save changes"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Create-zone dialog (no zone fits) */}
       <Dialog open={!!newZone} onOpenChange={(o) => !o && setNewZone(null)}>

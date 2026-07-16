@@ -9,6 +9,7 @@ const STATUS_HEADLINE: Record<string, string> = {
   DELIVERED: "Your package has been delivered",
   FAILED: "Delivery attempt failed",
   RESCHEDULED: "Your delivery has been rescheduled",
+  RETURN_TO_SENDER: "Your package is being returned to the sender",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -20,6 +21,7 @@ const STATUS_LABEL: Record<string, string> = {
   DELIVERED: "Delivered",
   FAILED: "Failed",
   RESCHEDULED: "Rescheduled",
+  RETURN_TO_SENDER: "Returned to sender",
 };
 
 export type BuiltMessage = {
@@ -42,10 +44,12 @@ export function buildStatusMessage(
 
   const extra =
     status === "FAILED"
-      ? " You can reschedule from your orders page."
+      ? " You can request re-delivery (a date within the next 3 days) from your orders page."
       : status === "RESCHEDULED" && order.scheduledDate
         ? ` New date: ${order.scheduledDate.toISOString().slice(0, 10)}.`
-        : "";
+        : status === "RETURN_TO_SENDER"
+          ? " All delivery attempts were used, so the package is on its way back to the sender."
+          : "";
 
   const inApp = `${headline} (${tn}).${extra}`;
   const sms = `${headline} for ${tn}.${extra} Track: ${trackUrl}`;

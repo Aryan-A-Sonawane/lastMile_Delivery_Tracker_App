@@ -9,6 +9,7 @@ export const STATUS_LABELS: Record<string, string> = {
   DELIVERED: "Delivered",
   FAILED: "Failed",
   RESCHEDULED: "Rescheduled",
+  RETURN_TO_SENDER: "Returned to sender",
 };
 
 const STATUS_STYLES: Record<string, string> = {
@@ -20,6 +21,7 @@ const STATUS_STYLES: Record<string, string> = {
   DELIVERED: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
   FAILED: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
   RESCHEDULED: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
+  RETURN_TO_SENDER: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
 };
 
 export function OrderStatusBadge({

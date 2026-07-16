@@ -107,6 +107,30 @@ Decisions locked with the user:
 try/catch tolerates transient drops (some orders skip). 55 tests green. Order-time zone detection stays deterministic
 (`Area.pincode → zone`).
 
+### Assignment / lifecycle / auth revamp (ALL DONE — 58 unit + 26 live checks green)
+- **Capabilities auth**: `Profile.roles Role[]` + JWT `app_metadata.roles[]` — one user can be CUSTOMER+AGENT(+ADMIN).
+  `lib/auth/roles.ts` (`getUserRoles`/`hasCapability`/`primaryHome`); admins preview any area. `/register` picks
+  account type, `/login` has a Customer/Agent switcher, admin `ViewSwitcher` (top-right) previews agent/customer.
+  `registerAccount` adds a capability to an existing email (verifies password first).
+- **Auto-assign toggle**: `Setting autoAssignEnabled` (default ON) + Switch in `/admin/settings`. New orders auto-assign
+  on create (`lib/orders/auto-assign.ts` `autoAssignIfEnabled`); flipping ON sweeps pending (`sweepPendingAssignments`).
+- **Refined scoring** (`domain/assignment.ts`, pure): distance + zone + workload(capacity+committed route) + direction
+  alignment + reliability. Agents have a **fixed serving location** (`AgentProfile.serviceLat/Lng/serviceAddress`,
+  agent-editable at `/agent/profile`; `PATCH /api/agent/profile`) used as the distance center (falls back to live GPS).
+- **Manual assign map**: `GET /api/orders/[id]/candidates` (`rankAgentsForOrder`) → ranked agents + coords + load;
+  `AssignPanel` shows a Leaflet map colour-coded by load, top-3 suggestions, click-to-assign.
+- **Order geocoding**: `lib/orders/geocode.ts` stamps pickup/drop lat/lng from Area→PincodeRef at creation, so
+  distance/direction scoring and the map work without client coords.
+- **Failed-delivery lifecycle**: agents **cannot cancel** (no such transition); a FAILED attempt needs a remark.
+  Customer books re-delivery within **3 days** (`RESCHEDULE_WINDOW_DAYS`), keeping the **same agent** first; max
+  **3 attempts** (`MAX_DELIVERY_ATTEMPTS`) then auto **`RETURN_TO_SENDER`** (new terminal `OrderStatus`). Constants
+  in `lib/orders/attempts.ts`.
+- **Order status bar** (`components/orders/order-status-bar.tsx`): lifecycle stepper + current handler + tel/mail
+  contacts, on every order-detail view.
+- **Single-active configs**: RateCard `@@unique([orderType,scope])`, CodConfig `@@unique([orderType])`; POST routes
+  **upsert** (overwrite, no misleading duplicates). Areas are editable (rename + reassign zone) in `/admin/areas`.
+- Migrations: `20260716120000_profile_roles`, `_serving_location_and_rts`, `_single_active_configs`.
+
 ## Local dev gotcha (NAT64/IPv6)
 This machine's network resolves the Supabase pooler to NAT64 IPv6 addresses that Prisma's engine can't use
 (`P1001`). Local `.env` `DATABASE_URL`/`DIRECT_URL` are therefore pinned to a pooler **IPv4 + `sslmode=require`**

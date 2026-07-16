@@ -61,6 +61,7 @@ enum OrderStatus {
   DELIVERED
   FAILED
   RESCHEDULED
+  RETURN_TO_SENDER
 }
 
 enum AgentStatus {
@@ -133,8 +134,11 @@ model AgentProfile {
   id              String      @id @default(cuid())
   profileId       String      @unique @db.Uuid
   status          AgentStatus @default(OFFLINE)
-  currentLat      Float?
+  currentLat      Float? // last-known GPS (live location)
   currentLng      Float?
+  serviceLat      Float? // fixed serving-location center (agent-editable); basis for distance scoring
+  serviceLng      Float?
+  serviceAddress  String? // human-readable serving location
   homeZoneId      String?
   maxActiveOrders Int         @default(5)
   activeOrders    Int         @default(0)
@@ -232,6 +236,7 @@ model RateCard {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
+  @@unique([orderType, scope]) // exactly one rate card per (orderType, scope)
   @@index([orderType, scope, isActive])
   @@map("rate_cards")
 }
@@ -248,6 +253,7 @@ model CodConfig {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  @@unique([orderType]) // exactly one COD config per orderType
   @@index([orderType, isActive])
   @@map("cod_configs")
 }

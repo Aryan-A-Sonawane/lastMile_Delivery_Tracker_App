@@ -11,16 +11,21 @@ import { notFound } from "@/lib/api/errors";
 type UpdateStatusArgs = {
   orderId: string;
   toStatus: OrderStatus;
-  actorProfileId: string;
-  actorRole: Extract<ActorRole, "AGENT" | "ADMIN">;
+  actorProfileId: string | null; // null for SYSTEM-driven transitions
+  actorRole: Extract<ActorRole, "AGENT" | "ADMIN" | "SYSTEM">;
   note?: string;
   reason?: FailureReason;
   lat?: number;
   lng?: number;
 };
 
-// Statuses that complete an attempt and free the assigned agent's capacity.
-const FREES_AGENT = new Set<OrderStatus>(["DELIVERED", "FAILED"]);
+// Statuses in which an order still occupies the agent's active-order capacity.
+const OCCUPIES_AGENT = new Set<OrderStatus>([
+  "ASSIGNED",
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "OUT_FOR_DELIVERY",
+]);
 
 /**
  * Applies a status transition: validates it against the state machine (admins
@@ -44,10 +49,19 @@ export async function updateOrderStatus({
   // Throws InvalidTransitionError (→ 409) for illegal moves; admin can override.
   assertTransition(order.status, toStatus, actorRole);
 
+  // Leaving an occupying status for a non-occupying one frees the agent's slot.
+  const freesAgent =
+    OCCUPIES_AGENT.has(order.status) && !OCCUPIES_AGENT.has(toStatus);
+  // On return-to-sender the order is no longer anyone's to handle.
+  const clearsAgent = toStatus === "RETURN_TO_SENDER";
+
   return prisma.$transaction(async (tx) => {
     const updated = await tx.order.update({
       where: { id: orderId },
-      data: { status: toStatus },
+      data: {
+        status: toStatus,
+        ...(clearsAgent ? { currentAgentId: null } : {}),
+      },
     });
 
     await tx.orderStatusHistory.create({
@@ -63,7 +77,7 @@ export async function updateOrderStatus({
       },
     });
 
-    if (FREES_AGENT.has(toStatus) && order.currentAgentId) {
+    if (freesAgent && order.currentAgentId) {
       const agent = await tx.agentProfile.findUnique({
         where: { id: order.currentAgentId },
       });

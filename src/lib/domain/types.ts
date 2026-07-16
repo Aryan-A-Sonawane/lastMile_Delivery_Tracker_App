@@ -14,7 +14,8 @@ export type OrderStatus =
   | "OUT_FOR_DELIVERY"
   | "DELIVERED"
   | "FAILED"
-  | "RESCHEDULED";
+  | "RESCHEDULED"
+  | "RETURN_TO_SENDER";
 
 /** Who performed an action. Mirrors the auth `Role` union. */
 export type ActorRole = "CUSTOMER" | "AGENT" | "ADMIN" | "SYSTEM";

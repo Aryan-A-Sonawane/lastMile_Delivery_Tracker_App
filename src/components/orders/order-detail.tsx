@@ -12,6 +12,7 @@ import { StatusUpdatePanel } from "./status-update-panel";
 import { ReschedulePanel } from "./reschedule-panel";
 import { OrderTimeline, type TimelineEntry } from "./order-timeline";
 import { OrderStatusBadge } from "./status-badge";
+import { OrderStatusBar } from "./order-status-bar";
 import { TrackingMapCard } from "./tracking-map-card";
 import { formatDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -43,12 +44,14 @@ type OrderDetailData = {
   currency: string;
   createdAt: string;
   scheduledDate: string | null;
+  attemptNumber: number;
   pickupZone?: { name: string; code: string; centerLat: number | null; centerLng: number | null } | null;
   dropZone?: { name: string; code: string; centerLat: number | null; centerLng: number | null } | null;
   currentAgent?: {
     currentLat: number | null;
     currentLng: number | null;
-    profile: { name: string };
+    serviceAddress: string | null;
+    profile: { name: string; email: string | null; phone: string | null };
   } | null;
   customer?: { name: string; email: string; phone: string | null } | null;
   statusHistory: TimelineEntry[];
@@ -123,6 +126,31 @@ export function OrderDetail({
         </Button>
       </div>
 
+      <OrderStatusBar
+        status={o.status}
+        scheduledDate={o.scheduledDate}
+        showCustomer={showCustomer}
+        agent={
+          o.currentAgent
+            ? {
+                name: o.currentAgent.profile.name,
+                phone: o.currentAgent.profile.phone,
+                email: o.currentAgent.profile.email,
+                note: o.currentAgent.serviceAddress,
+              }
+            : null
+        }
+        customer={
+          o.customer
+            ? {
+                name: o.customer.name,
+                phone: o.customer.phone,
+                email: o.customer.email,
+              }
+            : null
+        }
+      />
+
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="flex flex-col gap-6">
           <Card>
@@ -173,7 +201,7 @@ export function OrderDetail({
 
         <div className="flex flex-col gap-4">
           {canReschedule && o.status === "FAILED" && (
-            <ReschedulePanel orderId={o.id} />
+            <ReschedulePanel orderId={o.id} attemptNumber={o.attemptNumber} />
           )}
           {canAssign && ["CREATED", "RESCHEDULED"].includes(o.status) && (
             <AssignPanel orderId={o.id} />

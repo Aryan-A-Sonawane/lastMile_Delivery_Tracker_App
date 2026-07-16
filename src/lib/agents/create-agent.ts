@@ -12,6 +12,9 @@ export type CreateAgentInput = {
   maxActiveOrders?: number;
   currentLat?: number;
   currentLng?: number;
+  serviceLat?: number;
+  serviceLng?: number;
+  serviceAddress?: string | null;
 };
 
 function tempPassword(): string {
@@ -48,7 +51,10 @@ export async function createAgent(input: CreateAgentInput): Promise<{
   }
 
   const profileId = data.user.id;
-  const hasLocation = input.currentLat != null && input.currentLng != null;
+  const hasLiveLocation = input.currentLat != null && input.currentLng != null;
+  const hasServiceLocation = input.serviceLat != null && input.serviceLng != null;
+  // An agent can be scored (and so made available) once they have any location.
+  const hasLocation = hasLiveLocation || hasServiceLocation;
 
   const agent = await prisma.$transaction(async (tx) => {
     await tx.profile.create({
@@ -68,8 +74,11 @@ export async function createAgent(input: CreateAgentInput): Promise<{
         maxActiveOrders: input.maxActiveOrders ?? 5,
         currentLat: input.currentLat ?? null,
         currentLng: input.currentLng ?? null,
+        serviceLat: input.serviceLat ?? null,
+        serviceLng: input.serviceLng ?? null,
+        serviceAddress: input.serviceAddress ?? null,
         status: hasLocation ? "AVAILABLE" : "OFFLINE",
-        lastLocationAt: hasLocation ? new Date() : null,
+        lastLocationAt: hasLiveLocation ? new Date() : null,
       },
     });
   });

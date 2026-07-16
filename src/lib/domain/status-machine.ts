@@ -15,6 +15,7 @@ export const ALL_STATUSES: OrderStatus[] = [
   "DELIVERED",
   "FAILED",
   "RESCHEDULED",
+  "RETURN_TO_SENDER",
 ];
 
 type Transition = { to: OrderStatus; roles: ActorRole[] };
@@ -27,11 +28,18 @@ export const TRANSITIONS: Record<OrderStatus, Transition[]> = {
   IN_TRANSIT: [{ to: "OUT_FOR_DELIVERY", roles: ["AGENT"] }],
   OUT_FOR_DELIVERY: [
     { to: "DELIVERED", roles: ["AGENT"] },
+    // Agents can only report a failed attempt (never cancel a job).
     { to: "FAILED", roles: ["AGENT"] },
   ],
   DELIVERED: [], // terminal
-  FAILED: [{ to: "RESCHEDULED", roles: ["CUSTOMER", "ADMIN"] }],
+  FAILED: [
+    // Customer (or admin) reschedules while attempts remain…
+    { to: "RESCHEDULED", roles: ["CUSTOMER", "ADMIN"] },
+    // …otherwise the shipment is returned to the sender.
+    { to: "RETURN_TO_SENDER", roles: ["SYSTEM", "ADMIN"] },
+  ],
   RESCHEDULED: [{ to: "ASSIGNED", roles: ["ADMIN", "SYSTEM"] }],
+  RETURN_TO_SENDER: [], // terminal
 };
 
 export class InvalidTransitionError extends Error {

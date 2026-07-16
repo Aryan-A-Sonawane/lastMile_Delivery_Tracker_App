@@ -78,6 +78,14 @@ const optionalPhone = z
 
 export const agentStatusSchema = z.enum(["AVAILABLE", "BUSY", "OFFLINE"]);
 
+const optionalAddress = z
+  .string()
+  .trim()
+  .max(300)
+  .optional()
+  .nullable()
+  .or(z.literal("").transform(() => null));
+
 export const agentCreateSchema = z.object({
   name: z.string().trim().min(1, "name is required").max(120),
   email: z.string().trim().toLowerCase().email(),
@@ -86,6 +94,9 @@ export const agentCreateSchema = z.object({
   maxActiveOrders: z.coerce.number().int().min(1).max(50).default(5),
   currentLat: optionalCoord(-90, 90),
   currentLng: optionalCoord(-180, 180),
+  serviceLat: optionalCoord(-90, 90),
+  serviceLng: optionalCoord(-180, 180),
+  serviceAddress: optionalAddress,
 });
 
 export const agentUpdateSchema = z.object({
@@ -94,6 +105,19 @@ export const agentUpdateSchema = z.object({
   status: agentStatusSchema.optional(),
   homeZoneId: z.string().nullable().optional(),
   maxActiveOrders: z.coerce.number().int().min(1).max(50).optional(),
+  currentLat: optionalCoord(-90, 90),
+  currentLng: optionalCoord(-180, 180),
+  serviceLat: optionalCoord(-90, 90),
+  serviceLng: optionalCoord(-180, 180),
+  serviceAddress: optionalAddress,
+});
+
+/** An agent editing their own profile: serving location + live location + availability. */
+export const agentSelfUpdateSchema = z.object({
+  status: agentStatusSchema.optional(),
+  serviceLat: optionalCoord(-90, 90),
+  serviceLng: optionalCoord(-180, 180),
+  serviceAddress: optionalAddress,
   currentLat: optionalCoord(-90, 90),
   currentLng: optionalCoord(-180, 180),
 });
@@ -129,3 +153,4 @@ export type CodConfigInput = z.infer<typeof codConfigInputSchema>;
 export type SettingInput = z.infer<typeof settingInputSchema>;
 export type AgentCreateInput = z.infer<typeof agentCreateSchema>;
 export type AgentUpdateInput = z.infer<typeof agentUpdateSchema>;
+export type AgentSelfUpdateInput = z.infer<typeof agentSelfUpdateSchema>;

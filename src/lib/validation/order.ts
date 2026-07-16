@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RESCHEDULE_WINDOW_DAYS } from "@/lib/orders/attempts";
 
 export const quoteRequestSchema = z.object({
   pickupPincode: z.string().trim().regex(/^\d{4,10}$/, "invalid pincode"),
@@ -36,6 +37,7 @@ export const orderStatusValues = [
   "DELIVERED",
   "FAILED",
   "RESCHEDULED",
+  "RETURN_TO_SENDER",
 ] as const;
 
 export const failureReasonValues = [
@@ -56,10 +58,19 @@ export const statusUpdateSchema = z.object({
 
 export type StatusUpdateInput = z.infer<typeof statusUpdateSchema>;
 
+const SLACK_MS = 5 * 60_000; // tolerate small clock skew on the window edges
 export const rescheduleSchema = z.object({
-  requestedDate: z.coerce.date().refine((d) => d.getTime() > Date.now() - 86_400_000, {
-    message: "requestedDate must not be in the past",
-  }),
+  requestedDate: z.coerce
+    .date()
+    .refine((d) => d.getTime() >= Date.now() - SLACK_MS, {
+      message: "Pick a date and time in the future",
+    })
+    .refine(
+      (d) =>
+        d.getTime() <=
+        Date.now() + RESCHEDULE_WINDOW_DAYS * 86_400_000 + SLACK_MS,
+      { message: `Re-delivery must be within the next ${RESCHEDULE_WINDOW_DAYS} days` },
+    ),
   reason: z.string().trim().max(500).optional(),
 });
 

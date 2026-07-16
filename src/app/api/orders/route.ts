@@ -89,6 +89,9 @@ export const POST = withApi(async (req: NextRequest) => {
   if (assignedAgentId) {
     await broadcastOrderEvent(order.trackingNumber, { status: "ASSIGNED" });
     await notifyOrderStatus(order.id);
+    // Return the order reflecting its post-assignment state.
+    const assigned = await prisma.order.findUnique({ where: { id: order.id } });
+    return NextResponse.json({ data: assigned ?? order }, { status: 201 });
   }
 
   return NextResponse.json({ data: order }, { status: 201 });

@@ -5,14 +5,16 @@ import { withApi, forbidden, notFound } from "@/lib/api/errors";
 import { rescheduleSchema } from "@/lib/validation/order";
 import { rescheduleOrder } from "@/lib/orders/reschedule";
 import { assignAgent } from "@/lib/orders/assign";
+import { isAutoAssignEnabled } from "@/lib/orders/auto-assign";
 import { broadcastOrderEvent } from "@/lib/realtime/broadcast";
 import { notifyOrderStatus } from "@/lib/notifications/notify";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// Customer (own order) or admin reschedules a FAILED delivery. The order is
-// then auto-reassigned to a fresh agent (excluding the one who failed); if none
-// is available it stays RESCHEDULED for manual assignment.
+// Customer (own order) or admin requests re-delivery for a FAILED order (a date
+// within the next 3 days; max 3 attempts). The same agent keeps the job when
+// they're free; otherwise auto-assign picks a new one (when enabled). Failing
+// both, it stays RESCHEDULED for manual assignment.
 export const POST = withApi(async (req: NextRequest, { params }: Ctx) => {
   const profile = await requireRole("CUSTOMER", "ADMIN");
   const { id } = await params;
@@ -36,16 +38,28 @@ export const POST = withApi(async (req: NextRequest, { params }: Ctx) => {
   });
 
   let reassigned = false;
-  try {
-    await assignAgent({
-      orderId: id,
-      mode: "AUTO",
-      assignedById: profile.id,
-      excludeAgentId: previousAgentId ?? undefined,
-    });
-    reassigned = true;
-  } catch {
-    // No available agent right now — order stays RESCHEDULED for manual assign.
+  // 1) Keep the same agent for continuity when they're available again.
+  if (previousAgentId) {
+    try {
+      await assignAgent({
+        orderId: id,
+        mode: "MANUAL",
+        agentId: previousAgentId,
+        assignedById: profile.id,
+      });
+      reassigned = true;
+    } catch {
+      // Previous agent is busy/unavailable — fall through to auto-assign.
+    }
+  }
+  // 2) Otherwise auto-assign a fresh agent, only when auto-assign is enabled.
+  if (!reassigned && (await isAutoAssignEnabled())) {
+    try {
+      await assignAgent({ orderId: id, mode: "AUTO", assignedById: profile.id });
+      reassigned = true;
+    } catch {
+      // No available agent — stays RESCHEDULED for manual assignment.
+    }
   }
 
   const order = await prisma.order.findUniqueOrThrow({

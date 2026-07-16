@@ -1,6 +1,7 @@
 import type { ActorRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { assertTransition } from "@/lib/domain/status-machine";
+import { hasAttemptsRemaining, MAX_DELIVERY_ATTEMPTS } from "./attempts";
 import { conflict, notFound } from "@/lib/api/errors";
 
 type RescheduleArgs = {
@@ -28,6 +29,11 @@ export async function rescheduleOrder({
   if (!order) throw notFound("Order not found");
   if (order.status !== "FAILED") {
     throw conflict("Only a failed delivery can be rescheduled");
+  }
+  if (!hasAttemptsRemaining(order.attemptNumber)) {
+    throw conflict(
+      `All ${MAX_DELIVERY_ATTEMPTS} delivery attempts have been used — this shipment is being returned to the sender.`,
+    );
   }
   assertTransition("FAILED", "RESCHEDULED", actorRole);
 
