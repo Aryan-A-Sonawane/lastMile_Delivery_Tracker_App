@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MapPin, Pencil, Trash2, Plus } from "lucide-react";
+import { MapPin, Pencil, Trash2, Plus, X } from "lucide-react";
 import { api } from "@/lib/api-client";
 import type { ZoneCircleView } from "@/components/admin/zone-map";
 import { PageHeader } from "@/components/common/page-header";
@@ -14,13 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 const ZoneMap = dynamic(() => import("@/components/admin/zone-map"), {
   ssr: false,
@@ -43,12 +36,13 @@ type Draft = {
   name: string;
   code: string;
   radiusKm: string;
-  lat: number;
-  lng: number;
+  lat: number | null; // null until a center is placed on the map
+  lng: number | null;
 };
 
 export default function ZonesPage() {
   const qc = useQueryClient();
+  // draft === null → view-only (map clicks do nothing). Non-null → placing/editing.
   const [draft, setDraft] = useState<Draft | null>(null);
 
   const { data: zonesData, isLoading } = useQuery({
@@ -110,62 +104,131 @@ export default function ZonesPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  function startEdit(z: Zone) {
-    if (z.centerLat == null || z.centerLng == null) {
-      toast.error("This zone has no center yet — click the map to set one.");
-      return;
-    }
-    setDraft({
-      id: z.id,
-      name: z.name,
-      code: z.code,
-      radiusKm: String(z.radiusKm != null ? Number(z.radiusKm) : defaultRadius),
-      lat: z.centerLat,
-      lng: z.centerLng,
-    });
-  }
+  const placing = draft !== null;
+  const placed = draft?.lat != null && draft?.lng != null;
+  const canSave = placing && placed && !!draft?.name.trim() && !!draft?.code.trim();
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Zones"
-        description="Click the map to drop a zone center, or use New zone. Radius defaults from Settings and is editable per zone."
+        description="View delivery zones on the map. Add a new one with New zone, then click the map to place its center."
         actions={
           <Button
             size="sm"
+            variant={placing ? "secondary" : "default"}
             onClick={() =>
-              setDraft({ name: "", code: "", radiusKm: String(defaultRadius), lat: 22.6, lng: 79 })
+              setDraft(
+                placing
+                  ? null
+                  : { name: "", code: "", radiusKm: String(defaultRadius), lat: null, lng: null },
+              )
             }
           >
-            <Plus className="size-4" /> New zone
+            {placing ? (
+              <>
+                <X className="size-4" /> Cancel
+              </>
+            ) : (
+              <>
+                <Plus className="size-4" /> New zone
+              </>
+            )}
           </Button>
         }
       />
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
-        <Card>
-          <CardContent className="p-2">
-            <ZoneMap
-              zones={circles}
-              draft={draft ? { lat: draft.lat, lng: draft.lng, radiusKm: Number(draft.radiusKm) || defaultRadius } : null}
-              onPick={(lat, lng) =>
-                setDraft((d) =>
-                  d
-                    ? { ...d, lat, lng }
-                    : { name: "", code: "", radiusKm: String(defaultRadius), lat, lng },
-                )
-              }
-            />
-          </CardContent>
-        </Card>
+        <div className="flex flex-col gap-2">
+          {placing && (
+            <div className="flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-sm text-primary">
+              <MapPin className="size-4 shrink-0" />
+              {placed
+                ? "Click the map again to move the center."
+                : "Click anywhere on the map to place the zone center."}
+            </div>
+          )}
+          <Card>
+            <CardContent className="p-2">
+              <ZoneMap
+                zones={circles}
+                draft={
+                  placing && placed
+                    ? { lat: draft!.lat as number, lng: draft!.lng as number, radiusKm: Number(draft!.radiusKm) || defaultRadius }
+                    : null
+                }
+                // Map clicks only do something while adding/editing a zone.
+                onPick={
+                  placing
+                    ? (lat, lng) => setDraft((d) => (d ? { ...d, lat, lng } : d))
+                    : undefined
+                }
+              />
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="flex flex-col gap-3">
+          {/* Draft editor (new / edit) */}
+          {placing && draft && (
+            <Card className="border-primary">
+              <CardContent className="grid gap-3 p-4">
+                <p className="text-sm font-medium">{draft.id ? "Edit zone" : "New zone"}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="z-name">Name</Label>
+                    <Input
+                      id="z-name"
+                      value={draft.name}
+                      onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                      placeholder="North Bengaluru"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="z-code">Code</Label>
+                    <Input
+                      id="z-code"
+                      value={draft.code}
+                      onChange={(e) => setDraft({ ...draft, code: e.target.value })}
+                      placeholder="BLR-N"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="z-radius">Radius (km)</Label>
+                  <Input
+                    id="z-radius"
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    value={draft.radiusKm}
+                    onChange={(e) => setDraft({ ...draft, radiusKm: e.target.value })}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {placed
+                    ? `Center: ${(draft.lat as number).toFixed(4)}, ${(draft.lng as number).toFixed(4)}`
+                    : "No center yet — click the map to place it."}
+                </p>
+                <div className="flex gap-2">
+                  <Button className="flex-1" disabled={!canSave || save.isPending} onClick={() => save.mutate(draft)}>
+                    {save.isPending ? "Saving…" : "Save zone"}
+                  </Button>
+                  <Button variant="outline" onClick={() => setDraft(null)}>
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Existing zones */}
           {isLoading && <Skeleton className="h-40 w-full rounded-lg" />}
-          {!isLoading && zones.length === 0 && (
+          {!isLoading && zones.length === 0 && !placing && (
             <EmptyState
               icon={<MapPin className="size-6" />}
               title="No zones yet"
-              description="Click anywhere on the map to place your first zone."
+              description="Click New zone, then click the map to place your first zone."
             />
           )}
           {zones.map((z) => (
@@ -174,9 +237,7 @@ export default function ZonesPage() {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">
                     {z.name}{" "}
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {z.code}
-                    </span>
+                    <span className="font-mono text-xs text-muted-foreground">{z.code}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {z._count?.areas ?? 0} areas ·{" "}
@@ -185,7 +246,21 @@ export default function ZonesPage() {
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => startEdit(z)} aria-label="Edit">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Edit"
+                    onClick={() =>
+                      setDraft({
+                        id: z.id,
+                        name: z.name,
+                        code: z.code,
+                        radiusKm: String(z.radiusKm != null ? Number(z.radiusKm) : defaultRadius),
+                        lat: z.centerLat,
+                        lng: z.centerLng,
+                      })
+                    }
+                  >
                     <Pencil className="size-4" />
                   </Button>
                   <Button
@@ -205,46 +280,6 @@ export default function ZonesPage() {
           ))}
         </div>
       </div>
-
-      <Dialog open={!!draft} onOpenChange={(o) => !o && setDraft(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{draft?.id ? "Edit zone" : "New zone"}</DialogTitle>
-          </DialogHeader>
-          {draft && (
-            <form
-              className="grid gap-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                save.mutate(draft);
-              }}
-            >
-              <div className="grid grid-cols-2 gap-3">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="z-name">Name</Label>
-                  <Input id="z-name" required value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="z-code">Code</Label>
-                  <Input id="z-code" required value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} placeholder="BLR-N" />
-                </div>
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="z-radius">Radius (km)</Label>
-                <Input id="z-radius" type="number" step="0.5" min="0.5" required value={draft.radiusKm} onChange={(e) => setDraft({ ...draft, radiusKm: e.target.value })} />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Center: {draft.lat.toFixed(4)}, {draft.lng.toFixed(4)} — click the map to move it.
-              </p>
-              <DialogFooter>
-                <Button type="submit" disabled={save.isPending}>
-                  {save.isPending ? "Saving…" : "Save zone"}
-                </Button>
-              </DialogFooter>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

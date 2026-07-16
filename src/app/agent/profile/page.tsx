@@ -162,7 +162,11 @@ export default function AgentServingLocationPage() {
 
       {isLoading && <Skeleton className="h-96 w-full rounded-lg" />}
       {!isLoading && !agent && (
-        <p className="text-sm text-destructive">No agent profile found.</p>
+        <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+          This is where a delivery agent sets their <strong>serving location</strong> and
+          availability. You&apos;re viewing it as an admin preview — only agent accounts have a
+          serving location to edit here.
+        </div>
       )}
       {agent && <ServingLocationForm key={agent.id} agent={agent} />}
     </div>

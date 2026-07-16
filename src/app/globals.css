@@ -129,6 +129,15 @@
   }
 }
 
+/* Keep Leaflet maps (whose panes/controls sit at z-index 400–1000) contained in
+   their own stacking context, so they never paint over the sticky header,
+   dialogs, dropdowns or tooltips. Unlayered so it beats Leaflet's own CSS. */
+.leaflet-container {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+
 @layer utilities {
   /* Brand surfaces + accents shared across marketing + app chrome. */
   .bg-brand-gradient {

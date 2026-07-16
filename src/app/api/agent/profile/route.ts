@@ -12,13 +12,14 @@ const selfInclude = {
 } as const;
 
 // The signed-in agent's own profile (serving location, availability, load).
+// Agents get their own profile; admins may open this while previewing the agent
+// view (they have no agent profile, so it returns null rather than erroring).
 export const GET = withApi(async () => {
-  const me = await requireRole("AGENT");
+  const me = await requireRole("AGENT", "ADMIN");
   const agent = await prisma.agentProfile.findUnique({
     where: { profileId: me.id },
     include: selfInclude,
   });
-  if (!agent) throw notFound("Agent profile not found");
   return NextResponse.json({ data: agent });
 });
 
