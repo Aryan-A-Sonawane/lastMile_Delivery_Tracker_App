@@ -1,6 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
-import { getRequiredRole, getUserRole, ROLE_HOME } from "@/lib/auth/roles";
+import {
+  getRequiredRole,
+  hasCapability,
+  getUserRoles,
+  primaryHome,
+} from "@/lib/auth/roles";
 
 // Next.js 16 "proxy" convention (formerly `middleware`). Runs on the edge before
 // matched routes: refreshes the Supabase session and enforces role-based access.
@@ -23,11 +28,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Signed in but wrong role → bounce to their own home (or login if unknown).
-  const role = getUserRole(user);
-  if (role !== requiredRole) {
+  // Signed in but lacks the capability → bounce to their own home (admins can
+  // access every area, so this only blocks users missing the capability).
+  if (!hasCapability(user, requiredRole)) {
+    const roles = getUserRoles(user);
     const url = request.nextUrl.clone();
-    url.pathname = role ? ROLE_HOME[role] : "/login";
+    url.pathname = roles.length ? primaryHome(roles) : "/login";
     return NextResponse.redirect(url);
   }
 

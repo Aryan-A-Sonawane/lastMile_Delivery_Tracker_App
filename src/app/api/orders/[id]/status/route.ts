@@ -15,7 +15,8 @@ export const POST = withApi(async (req: NextRequest, { params }: Ctx) => {
   const { id } = await params;
   const input = statusUpdateSchema.parse(await req.json());
 
-  if (profile.role === "AGENT") {
+  // Non-admins may only update orders assigned to them; admins can override.
+  if (!profile.roles.includes("ADMIN")) {
     const [agent, order] = await Promise.all([
       prisma.agentProfile.findUnique({
         where: { profileId: profile.id },
@@ -36,7 +37,7 @@ export const POST = withApi(async (req: NextRequest, { params }: Ctx) => {
     orderId: id,
     toStatus: input.status,
     actorProfileId: profile.id,
-    actorRole: profile.role === "AGENT" ? "AGENT" : "ADMIN",
+    actorRole: profile.roles.includes("ADMIN") ? "ADMIN" : "AGENT",
     note: input.note,
     reason: input.reason,
     lat: input.lat,

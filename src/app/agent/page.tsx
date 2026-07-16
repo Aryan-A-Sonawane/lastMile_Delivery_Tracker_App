@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function AgentDashboard() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["orders", "agent"],
-    queryFn: () => api.get<{ data: OrderRow[] }>("/api/orders"),
+    queryFn: () => api.get<{ data: OrderRow[] }>("/api/orders?scope=agent"),
   });
 
   return (

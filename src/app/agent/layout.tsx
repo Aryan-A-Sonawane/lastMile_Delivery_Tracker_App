@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSessionProfile } from "@/lib/auth/session";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { NotificationBell } from "@/components/notification-bell";
+import { ViewSwitcher } from "@/components/admin/view-switcher";
 
 export default async function AgentLayout({
   children,
@@ -11,7 +12,8 @@ export default async function AgentLayout({
 }) {
   const profile = await getSessionProfile();
   if (!profile) redirect("/login?redirectTo=/agent");
-  if (profile.role !== "AGENT") redirect("/");
+  if (!profile.roles.includes("AGENT") && !profile.roles.includes("ADMIN"))
+    redirect("/");
 
   return (
     <div className="flex min-h-full flex-col">
@@ -21,6 +23,11 @@ export default async function AgentLayout({
             Agent · Last-Mile
           </Link>
           <div className="flex items-center gap-3">
+            {profile.roles.includes("ADMIN") && (
+              <span className="hidden sm:block">
+                <ViewSwitcher />
+              </span>
+            )}
             <NotificationBell />
             <span className="hidden text-sm text-muted-foreground sm:inline">
               {profile.name}

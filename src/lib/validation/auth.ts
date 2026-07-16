@@ -4,6 +4,7 @@ export const registerSchema = z.object({
   name: z.string().trim().min(1, "name is required").max(120),
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8, "password must be at least 8 characters").max(72),
+  accountType: z.enum(["CUSTOMER", "AGENT"]).default("CUSTOMER"),
   phone: z
     .string()
     .trim()

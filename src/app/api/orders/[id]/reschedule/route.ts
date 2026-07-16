@@ -18,7 +18,7 @@ export const POST = withApi(async (req: NextRequest, { params }: Ctx) => {
   const { id } = await params;
   const { requestedDate, reason } = rescheduleSchema.parse(await req.json());
 
-  if (profile.role === "CUSTOMER") {
+  if (!profile.roles.includes("ADMIN")) {
     const order = await prisma.order.findUnique({
       where: { id },
       select: { customerId: true },
@@ -32,7 +32,7 @@ export const POST = withApi(async (req: NextRequest, { params }: Ctx) => {
     requestedDate,
     reason,
     actorProfileId: profile.id,
-    actorRole: profile.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
+    actorRole: profile.roles.includes("ADMIN") ? "ADMIN" : "CUSTOMER",
   });
 
   let reassigned = false;

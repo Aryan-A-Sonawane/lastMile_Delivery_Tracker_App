@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   selectAgent,
   isAvailable,
+  directionVector,
   type AgentCandidate,
   type AssignmentContext,
 } from "../assignment";
@@ -62,5 +63,43 @@ describe("assignment", () => {
     const { best } = selectAgent([near], ctx);
     expect(best?.reason).toMatch(/km away/);
     expect(best?.reason).toMatch(/same zone/);
+  });
+
+  it("prefers the agent whose current route aligns with the new leg", () => {
+    // New leg heads east (increasing longitude).
+    const dirCtx: AssignmentContext = {
+      pickup: { lat: 12.97, lng: 77.59 },
+      drop: { lat: 12.97, lng: 77.69 },
+      pickupZoneId: "Z1",
+    };
+    const base: Omit<AgentCandidate, "agentId" | "heading"> = {
+      location: { lat: 12.97, lng: 77.59 },
+      homeZoneId: "Z1",
+      activeOrders: 1,
+      maxActiveOrders: 5,
+      committedRouteKm: 5,
+      rating: 5,
+    };
+    const aligned: AgentCandidate = { ...base, agentId: "aligned", heading: { x: 1, y: 0 } };
+    const detour: AgentCandidate = { ...base, agentId: "detour", heading: { x: -1, y: 0 } };
+
+    const { best, ranked } = selectAgent([detour, aligned], dirCtx);
+    expect(best?.agentId).toBe("aligned");
+    expect(ranked[0].directionScore).toBeGreaterThan(ranked[1].directionScore);
+  });
+
+  it("penalises a heavier committed route in the workload term", () => {
+    const light: AgentCandidate = { ...near, agentId: "light", committedRouteKm: 0 };
+    const heavy: AgentCandidate = { ...near, agentId: "heavy", committedRouteKm: 80 };
+    const { best } = selectAgent([heavy, light], ctx);
+    expect(best?.agentId).toBe("light");
+  });
+
+  it("computes a unit direction vector (null for a zero leg)", () => {
+    const v = directionVector({ lat: 0, lng: 0 }, { lat: 0, lng: 1 });
+    expect(v).not.toBeNull();
+    expect(Math.hypot(v!.x, v!.y)).toBeCloseTo(1, 5);
+    expect(v!.x).toBeGreaterThan(0); // heading east
+    expect(directionVector({ lat: 5, lng: 5 }, { lat: 5, lng: 5 })).toBeNull();
   });
 });

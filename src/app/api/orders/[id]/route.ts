@@ -16,15 +16,18 @@ export const GET = withApi(async (_req: NextRequest, { params }: Ctx) => {
   });
   if (!order) throw notFound("Order not found");
 
-  if (profile.role === "CUSTOMER" && order.customerId !== profile.id) {
-    throw forbidden();
-  }
-  if (profile.role === "AGENT") {
-    const agent = await prisma.agentProfile.findUnique({
-      where: { profileId: profile.id },
-      select: { id: true },
-    });
-    if (order.currentAgentId !== agent?.id) throw forbidden();
+  // Admins see any order; others must be the customer-owner or the assigned agent.
+  if (!profile.roles.includes("ADMIN")) {
+    const isOwner = order.customerId === profile.id;
+    let isAssignedAgent = false;
+    if (profile.roles.includes("AGENT")) {
+      const agent = await prisma.agentProfile.findUnique({
+        where: { profileId: profile.id },
+        select: { id: true },
+      });
+      isAssignedAgent = !!agent && order.currentAgentId === agent.id;
+    }
+    if (!isOwner && !isAssignedAgent) throw forbidden();
   }
 
   return NextResponse.json({ data: order });

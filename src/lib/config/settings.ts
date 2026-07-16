@@ -9,11 +9,13 @@ import { prisma } from "@/lib/prisma";
 export const SETTING_KEYS = {
   VOLUMETRIC_DIVISOR: "volumetricDivisor",
   CURRENCY: "currency",
+  DEFAULT_ZONE_RADIUS_KM: "defaultZoneRadiusKm",
 } as const;
 
 export const SETTING_DEFAULTS: Record<string, string> = {
   [SETTING_KEYS.VOLUMETRIC_DIVISOR]: "5000",
   [SETTING_KEYS.CURRENCY]: "INR",
+  [SETTING_KEYS.DEFAULT_ZONE_RADIUS_KM]: "8",
 };
 
 export type SettingsMap = Record<string, string>;
@@ -33,4 +35,9 @@ export function getVolumetricDivisor(map: SettingsMap): number {
 
 export function getCurrency(map: SettingsMap): string {
   return map[SETTING_KEYS.CURRENCY] ?? "INR";
+}
+
+export function getDefaultZoneRadiusKm(map: SettingsMap): number {
+  const n = Number(map[SETTING_KEYS.DEFAULT_ZONE_RADIUS_KM]);
+  return Number.isFinite(n) && n > 0 ? n : 8;
 }

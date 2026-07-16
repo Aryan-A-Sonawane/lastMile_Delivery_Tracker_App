@@ -19,6 +19,8 @@ async function seedSettings() {
   const settings = [
     { key: "volumetricDivisor", value: "5000", description: "Divisor for volumetric weight (L×B×H ÷ divisor)" },
     { key: "currency", value: "INR", description: "Display currency for charges" },
+    { key: "defaultZoneRadiusKm", value: "12", description: "Default zone radius in km (per-zone override allowed)" },
+    { key: "autoAssignEnabled", value: "true", description: "Auto-assign new orders to the best available agent (off = manual assignment)" },
   ];
   for (const s of settings) {
     await prisma.setting.upsert({
@@ -32,22 +34,30 @@ async function seedSettings() {
 
 async function seedZonesAndAreas() {
   const zones = [
-    { code: "BLR-N", name: "North Bengaluru", centerLat: 13.05, centerLng: 77.59, pincodes: ["560001", "560003", "560024"] },
-    { code: "BLR-S", name: "South Bengaluru", centerLat: 12.9, centerLng: 77.6, pincodes: ["560004", "560011", "560041"] },
-    { code: "BLR-E", name: "East Bengaluru", centerLat: 12.97, centerLng: 77.7, pincodes: ["560037", "560048", "560066"] },
+    { code: "BLR-N", name: "North Bengaluru", centerLat: 13.05, centerLng: 77.59, radiusKm: 12, pincodes: ["560001", "560003", "560024"] },
+    { code: "BLR-S", name: "South Bengaluru", centerLat: 12.9, centerLng: 77.6, radiusKm: 12, pincodes: ["560004", "560011", "560041"] },
+    { code: "BLR-E", name: "East Bengaluru", centerLat: 12.97, centerLng: 77.7, radiusKm: 12, pincodes: ["560037", "560048", "560066"] },
   ];
 
   for (const z of zones) {
     const zone = await prisma.zone.upsert({
       where: { code: z.code },
-      create: { code: z.code, name: z.name, centerLat: z.centerLat, centerLng: z.centerLng },
-      update: { name: z.name, centerLat: z.centerLat, centerLng: z.centerLng },
+      create: { code: z.code, name: z.name, centerLat: z.centerLat, centerLng: z.centerLng, radiusKm: z.radiusKm },
+      update: { name: z.name, centerLat: z.centerLat, centerLng: z.centerLng, radiusKm: z.radiusKm },
     });
     for (const pincode of z.pincodes) {
+      const areaData = {
+        name: `${z.name} ${pincode}`,
+        city: "Bengaluru",
+        state: "Karnataka",
+        lat: z.centerLat,
+        lng: z.centerLng,
+        zoneId: zone.id,
+      };
       await prisma.area.upsert({
         where: { pincode },
-        create: { pincode, name: `${z.name} ${pincode}`, zoneId: zone.id },
-        update: { name: `${z.name} ${pincode}`, zoneId: zone.id },
+        create: { pincode, ...areaData },
+        update: areaData,
       });
     }
   }
@@ -103,6 +113,7 @@ async function seedUsers() {
   }
 
   async function ensureUser(email: string, name: string, role: Role): Promise<string> {
+    const roles: Role[] = [role];
     let id = await findAuthUserId(email);
     if (!id) {
       const { data, error } = await supabase.auth.admin.createUser({
@@ -110,18 +121,18 @@ async function seedUsers() {
         password: DEMO_PASSWORD,
         email_confirm: true,
         user_metadata: { name },
-        app_metadata: { role },
+        app_metadata: { role, roles },
       });
       if (error) throw error;
       id = data.user.id;
     } else {
-      // Keep role claim in sync for existing users.
-      await supabase.auth.admin.updateUserById(id, { app_metadata: { role } });
+      // Keep role claims in sync for existing users.
+      await supabase.auth.admin.updateUserById(id, { app_metadata: { role, roles } });
     }
     await prisma.profile.upsert({
       where: { id },
-      create: { id, email, name, role },
-      update: { name, role },
+      create: { id, email, name, role, roles },
+      update: { name, role, roles },
     });
     return id;
   }

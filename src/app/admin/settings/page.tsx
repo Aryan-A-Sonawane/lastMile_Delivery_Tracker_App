@@ -5,9 +5,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { PageHeader } from "@/components/common/page-header";
+import { Administrators } from "@/components/admin/administrators";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -20,17 +23,75 @@ import {
 
 type Setting = { key: string; value: string; description: string | null };
 type UpsertPayload = { key: string; value: string; description?: string | null };
+type UpsertResponse = {
+  data: Setting;
+  swept?: { assigned: number; pending: number };
+};
+
+const AUTO_ASSIGN_KEY = "autoAssignEnabled";
 
 function useUpsertSetting() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: UpsertPayload) => api.put("/api/admin/settings", payload),
+    mutationFn: (payload: UpsertPayload) =>
+      api.put<UpsertResponse>("/api/admin/settings", payload),
     onSuccess: () => {
       toast.success("Setting saved");
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
+}
+
+function AutoAssignCard({ setting }: { setting: Setting | undefined }) {
+  const qc = useQueryClient();
+  const enabled = (setting?.value ?? "true").trim().toLowerCase() === "true";
+
+  const toggle = useMutation({
+    mutationFn: (next: boolean) =>
+      api.put<UpsertResponse>("/api/admin/settings", {
+        key: AUTO_ASSIGN_KEY,
+        value: next ? "true" : "false",
+        description:
+          setting?.description ??
+          "Auto-assign new orders to the best available agent (off = manual assignment)",
+      }),
+    onSuccess: (res, next) => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      if (next && res.swept) {
+        toast.success(
+          res.swept.assigned > 0
+            ? `Auto-assign on — assigned ${res.swept.assigned} pending order${res.swept.assigned === 1 ? "" : "s"}` +
+                (res.swept.pending > 0 ? `, ${res.swept.pending} still waiting for an agent` : "")
+            : "Auto-assign on — no pending orders to assign",
+        );
+      } else {
+        toast.success(next ? "Auto-assign on" : "Auto-assign off — assign orders manually");
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+      <div className="grid gap-1">
+        <Label className="text-sm font-medium">Auto-assign new orders</Label>
+        <p className="text-xs text-muted-foreground">
+          When on, each new order is assigned to the best available agent
+          (proximity, workload, zone, route direction and rating). Turning it on
+          also sweeps any orders currently waiting for assignment. When off, you
+          assign every order manually from the order page.
+        </p>
+      </div>
+      <Switch
+        checked={enabled}
+        disabled={toggle.isPending}
+        onCheckedChange={(v) => toggle.mutate(v)}
+        aria-label="Toggle auto-assignment"
+      />
+    </div>
+  );
 }
 
 function SettingRow({ setting }: { setting: Setting }) {
@@ -134,31 +195,43 @@ export default function SettingsPage() {
     queryFn: () => api.get<{ data: Setting[] }>("/api/admin/settings"),
   });
   const settings = data?.data ?? [];
+  const autoAssign = settings.find((s) => s.key === AUTO_ASSIGN_KEY);
+  const otherSettings = settings.filter((s) => s.key !== AUTO_ASSIGN_KEY);
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Settings</h1>
-          <p className="text-sm text-muted-foreground">
-            Global configuration such as the volumetric divisor and currency.
-          </p>
-        </div>
-        <AddSettingDialog />
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Settings"
+        description="Global configuration, and who can administer the platform."
+      />
 
-      <div className="flex flex-col gap-3">
+      <Administrators />
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium">Assignment</h2>
+        {isLoading ? (
+          <Skeleton className="h-20 w-full rounded-lg" />
+        ) : (
+          <AutoAssignCard setting={autoAssign} />
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium">Configuration</h2>
+          <AddSettingDialog />
+        </div>
         {isLoading &&
           Array.from({ length: 2 }).map((_, i) => (
             <Skeleton key={i} className="h-20 w-full rounded-lg" />
           ))}
-        {!isLoading && settings.length === 0 && (
+        {!isLoading && otherSettings.length === 0 && (
           <p className="text-sm text-muted-foreground">No settings yet.</p>
         )}
-        {settings.map((s) => (
+        {otherSettings.map((s) => (
           <SettingRow key={s.key} setting={s} />
         ))}
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }

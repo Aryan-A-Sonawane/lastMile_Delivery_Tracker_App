@@ -7,7 +7,7 @@ import { withApi } from "@/lib/api/errors";
 export const GET = withApi(async () => {
   await requireRole("ADMIN");
   const customers = await prisma.profile.findMany({
-    where: { role: "CUSTOMER" },
+    where: { roles: { has: "CUSTOMER" } },
     select: { id: true, name: true, email: true },
     orderBy: { name: "asc" },
   });

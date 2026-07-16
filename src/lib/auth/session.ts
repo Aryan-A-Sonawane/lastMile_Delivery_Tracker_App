@@ -27,9 +27,11 @@ export async function requireProfile(): Promise<Profile> {
   return profile;
 }
 
-/** Requires the signed-in user to hold one of `roles`; throws 401/403 otherwise. */
+/** Requires the signed-in user to hold at least one of `roles` as a capability;
+ * throws 401/403 otherwise. */
 export async function requireRole(...roles: Role[]): Promise<Profile> {
   const profile = await requireProfile();
-  if (!roles.includes(profile.role as Role)) throw forbidden();
+  const caps = profile.roles as Role[];
+  if (!caps.some((r) => roles.includes(r))) throw forbidden();
   return profile;
 }

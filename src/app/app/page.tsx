@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function CustomerDashboard() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["orders", "customer"],
-    queryFn: () => api.get<{ data: OrderRow[] }>("/api/orders"),
+    queryFn: () => api.get<{ data: OrderRow[] }>("/api/orders?scope=customer"),
   });
 
   return (

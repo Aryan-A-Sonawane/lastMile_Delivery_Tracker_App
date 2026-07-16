@@ -1,12 +1,6 @@
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { PageHeader } from "@/components/common/page-header";
+import { StatCard } from "@/components/common/stat-card";
 
 export const dynamic = "force-dynamic";
 
@@ -36,38 +30,20 @@ export default async function AdminOverview() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold">Overview</h1>
-        <p className="text-sm text-muted-foreground">
-          Configure the pricing engine and zone detection. Everything here is
-          admin-configurable — nothing is hardcoded.
-        </p>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {stats.map((s) => {
-          const card = (
-            <Card
-              className={
-                s.href ? "h-full transition-colors hover:border-primary/50" : "h-full"
-              }
-            >
-              <CardHeader className="pb-2">
-                <CardDescription>{s.label}</CardDescription>
-                <CardTitle className="text-3xl">{s.value}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xs text-muted-foreground">{s.hint}</p>
-              </CardContent>
-            </Card>
-          );
-          return s.href ? (
-            <Link key={s.label} href={s.href}>
-              {card}
-            </Link>
-          ) : (
-            <div key={s.label}>{card}</div>
-          );
-        })}
+      <PageHeader
+        title="Overview"
+        description="Configure the pricing engine and zone detection — everything here is admin-configurable, nothing is hardcoded."
+      />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {stats.map((s) => (
+          <StatCard
+            key={s.label}
+            label={s.label}
+            value={s.value}
+            hint={s.hint}
+            href={s.href}
+          />
+        ))}
       </div>
     </div>
   );

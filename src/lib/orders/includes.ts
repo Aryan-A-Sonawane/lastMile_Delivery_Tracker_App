@@ -1,7 +1,8 @@
 import { Prisma } from "@prisma/client";
 
-/** Shared select for order list rows (zones + current agent name). */
+/** Shared select for order list rows (customer + zones + current agent name). */
 export const orderListInclude = {
+  customer: { select: { name: true } },
   pickupZone: { select: { name: true, code: true } },
   dropZone: { select: { name: true, code: true } },
   currentAgent: { select: { id: true, profile: { select: { name: true } } } },

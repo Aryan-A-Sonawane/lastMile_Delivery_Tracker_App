@@ -33,6 +33,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 
 export type FieldType = "text" | "number" | "select";
 
@@ -63,6 +64,8 @@ type Props<T extends { id: string }> = {
   /** Convert the raw string form values into the JSON payload for the API. */
   toPayload: (form: Record<string, string>) => unknown;
   addLabel?: string;
+  /** When set, renders an "Active" switch column bound to this boolean field. */
+  toggle?: { key: string; header?: string };
 };
 
 function initialForm(fields: Field[]): Record<string, string> {
@@ -78,6 +81,7 @@ export function ResourceManager<T extends { id: string }>({
   fields,
   toPayload,
   addLabel = "Add",
+  toggle,
 }: Props<T>) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -105,6 +109,13 @@ export function ResourceManager<T extends { id: string }>({
       toast.success(`${title} deleted`);
       qc.invalidateQueries({ queryKey: [queryKey] });
     },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: ({ id, value }: { id: string; value: boolean }) =>
+      api.patch(`${endpoint}/${id}`, { [toggle!.key]: value }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [queryKey] }),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -188,6 +199,7 @@ export function ResourceManager<T extends { id: string }>({
                   {c.header}
                 </TableHead>
               ))}
+              {toggle && <TableHead>{toggle.header ?? "Active"}</TableHead>}
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
@@ -195,14 +207,14 @@ export function ResourceManager<T extends { id: string }>({
             {isLoading &&
               Array.from({ length: 3 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={columns.length + 1}>
+                  <TableCell colSpan={columns.length + 1 + (toggle ? 1 : 0)}>
                     <Skeleton className="h-5 w-full" />
                   </TableCell>
                 </TableRow>
               ))}
             {isError && (
               <TableRow>
-                <TableCell colSpan={columns.length + 1} className="text-destructive">
+                <TableCell colSpan={columns.length + 1 + (toggle ? 1 : 0)} className="text-destructive">
                   {(error as Error)?.message ?? "Failed to load"}
                 </TableCell>
               </TableRow>
@@ -210,7 +222,7 @@ export function ResourceManager<T extends { id: string }>({
             {!isLoading && !isError && rows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length + 1}
+                  colSpan={columns.length + 1 + (toggle ? 1 : 0)}
                   className="text-center text-muted-foreground"
                 >
                   No {title.toLowerCase()} yet.
@@ -224,6 +236,14 @@ export function ResourceManager<T extends { id: string }>({
                     {c.render(row)}
                   </TableCell>
                 ))}
+                {toggle && (
+                  <TableCell>
+                    <Switch
+                      checked={Boolean((row as Record<string, unknown>)[toggle.key])}
+                      onCheckedChange={(v) => toggleMut.mutate({ id: row.id, value: v })}
+                    />
+                  </TableCell>
+                )}
                 <TableCell>
                   <Button
                     variant="ghost"

@@ -5,7 +5,6 @@ import {
   type Column,
   type Field,
 } from "@/components/admin/resource-manager";
-import { Badge } from "@/components/ui/badge";
 
 type CodConfig = {
   id: string;
@@ -46,11 +45,6 @@ const columns: Column<CodConfig>[] = [
     header: "Amount",
     render: (c) => (c.mode === "PERCENT" ? `${Number(c.amount)}%` : Number(c.amount).toFixed(2)),
   },
-  {
-    header: "Status",
-    render: (c) =>
-      c.isActive ? <Badge>Active</Badge> : <Badge variant="secondary">Inactive</Badge>,
-  },
 ];
 
 export default function CodConfigsPage() {
@@ -62,6 +56,7 @@ export default function CodConfigsPage() {
       queryKey="cod-configs"
       fields={fields}
       columns={columns}
+      toggle={{ key: "isActive" }}
       addLabel="Add COD config"
       toPayload={(f) => ({
         orderType: f.orderType,

@@ -2,11 +2,72 @@ import { Prisma, type Order } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   selectAgent,
+  directionVector,
   type AgentCandidate,
   type ScoredAgent,
+  type Vec2,
 } from "@/lib/domain/assignment";
+import { haversineKm } from "@/lib/domain/zones";
 import { assertTransition } from "@/lib/domain/status-machine";
 import { badRequest, conflict, notFound } from "@/lib/api/errors";
+
+// Statuses that still occupy an agent's committed route (not yet delivered/closed).
+const IN_FLIGHT = [
+  "ASSIGNED",
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "OUT_FOR_DELIVERY",
+] as const;
+
+/**
+ * For each candidate agent, sum the route distance of their in-flight orders and
+ * derive an aggregate heading (normalized sum of pickup→drop legs). Used by the
+ * workload + direction-alignment scoring terms.
+ */
+async function loadAgentWorkload(agentIds: string[]): Promise<
+  Map<string, { committedRouteKm: number; heading: Vec2 | null }>
+> {
+  const out = new Map<string, { committedRouteKm: number; heading: Vec2 | null }>();
+  if (agentIds.length === 0) return out;
+
+  const orders = await prisma.order.findMany({
+    where: { currentAgentId: { in: agentIds }, status: { in: [...IN_FLIGHT] } },
+    select: {
+      currentAgentId: true,
+      pickupLat: true,
+      pickupLng: true,
+      dropLat: true,
+      dropLng: true,
+    },
+  });
+
+  const acc = new Map<string, { km: number; x: number; y: number }>();
+  for (const o of orders) {
+    if (!o.currentAgentId) continue;
+    if (o.pickupLat == null || o.pickupLng == null || o.dropLat == null || o.dropLng == null) {
+      continue;
+    }
+    const pickup = { lat: o.pickupLat, lng: o.pickupLng };
+    const drop = { lat: o.dropLat, lng: o.dropLng };
+    const cur = acc.get(o.currentAgentId) ?? { km: 0, x: 0, y: 0 };
+    cur.km += haversineKm(pickup, drop);
+    const v = directionVector(pickup, drop);
+    if (v) {
+      cur.x += v.x;
+      cur.y += v.y;
+    }
+    acc.set(o.currentAgentId, cur);
+  }
+
+  for (const [agentId, { km, x, y }] of acc) {
+    const mag = Math.hypot(x, y);
+    out.set(agentId, {
+      committedRouteKm: km,
+      heading: mag > 0 ? { x: x / mag, y: y / mag } : null,
+    });
+  }
+  return out;
+}
 
 type AssignArgs = {
   orderId: string;
@@ -56,6 +117,8 @@ export async function assignAgent({
       },
     });
 
+    const workload = await loadAgentWorkload(candidates.map((a) => a.id));
+
     const mapped: AgentCandidate[] = candidates.map((a) => ({
       agentId: a.id,
       location:
@@ -65,12 +128,19 @@ export async function assignAgent({
       homeZoneId: a.homeZoneId,
       activeOrders: a.activeOrders,
       maxActiveOrders: a.maxActiveOrders,
+      committedRouteKm: workload.get(a.id)?.committedRouteKm ?? 0,
+      heading: workload.get(a.id)?.heading ?? null,
+      rating: a.rating,
     }));
 
     const { best } = selectAgent(mapped, {
       pickup:
         order.pickupLat != null && order.pickupLng != null
           ? { lat: order.pickupLat, lng: order.pickupLng }
+          : null,
+      drop:
+        order.dropLat != null && order.dropLng != null
+          ? { lat: order.dropLat, lng: order.dropLng }
           : null,
       pickupZoneId: order.pickupZoneId,
     });

@@ -18,7 +18,10 @@
     "db:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "db:seed-pincodes": "tsx prisma/seed-pincodes.ts",
+    "db:provision": "tsx prisma/provision-nationwide.ts",
+    "db:seed-orders": "tsx prisma/seed-orders.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -32,12 +35,15 @@
     "@tanstack/react-query": "^5.101.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "date-fns": "^4.4.0",
     "leaflet": "^1.9.4",
+    "leaflet.heat": "^0.2.0",
     "lucide-react": "^1.24.0",
     "next": "16.2.10",
     "next-themes": "^0.4.6",
     "nodemailer": "^9.0.3",
+    "papaparse": "^5.5.4",
     "radix-ui": "^1.6.2",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -52,8 +58,10 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/leaflet": "^1.9.21",
+    "@types/leaflet.heat": "^0.2.5",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

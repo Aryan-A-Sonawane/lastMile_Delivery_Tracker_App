@@ -5,7 +5,6 @@ import {
   type Column,
   type Field,
 } from "@/components/admin/resource-manager";
-import { Badge } from "@/components/ui/badge";
 
 type RateCard = {
   id: string;
@@ -56,11 +55,6 @@ const columns: Column<RateCard>[] = [
   { header: "Base", render: (r) => Number(r.baseRate).toFixed(2) },
   { header: "Per kg", render: (r) => Number(r.perKgRate).toFixed(2) },
   { header: "Min kg", render: (r) => Number(r.minChargeableWeight).toFixed(3) },
-  {
-    header: "Status",
-    render: (r) =>
-      r.isActive ? <Badge>Active</Badge> : <Badge variant="secondary">Inactive</Badge>,
-  },
 ];
 
 export default function RateCardsPage() {
@@ -72,6 +66,7 @@ export default function RateCardsPage() {
       queryKey="rate-cards"
       fields={fields}
       columns={columns}
+      toggle={{ key: "isActive" }}
       addLabel="Add rate card"
       toPayload={(f) => ({
         orderType: f.orderType,

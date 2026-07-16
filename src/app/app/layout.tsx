@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSessionProfile } from "@/lib/auth/session";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { NotificationBell } from "@/components/notification-bell";
+import { ViewSwitcher } from "@/components/admin/view-switcher";
 import { Button } from "@/components/ui/button";
 
 export default async function AppLayout({
@@ -12,7 +13,8 @@ export default async function AppLayout({
 }) {
   const profile = await getSessionProfile();
   if (!profile) redirect("/login?redirectTo=/app");
-  if (profile.role !== "CUSTOMER") redirect("/");
+  if (!profile.roles.includes("CUSTOMER") && !profile.roles.includes("ADMIN"))
+    redirect("/");
 
   return (
     <div className="flex min-h-full flex-col">
@@ -22,6 +24,11 @@ export default async function AppLayout({
             Last-Mile
           </Link>
           <div className="flex items-center gap-3">
+            {profile.roles.includes("ADMIN") && (
+              <span className="hidden sm:block">
+                <ViewSwitcher />
+              </span>
+            )}
             <Button asChild size="sm">
               <Link href="/app/orders/new">New order</Link>
             </Button>

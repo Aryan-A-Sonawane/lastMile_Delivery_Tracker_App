@@ -5,26 +5,37 @@ import { requireProfile, requireRole } from "@/lib/auth/session";
 import { withApi, badRequest } from "@/lib/api/errors";
 import { orderCreateSchema } from "@/lib/validation/order";
 import { createOrder } from "@/lib/orders/create-order";
+import { autoAssignIfEnabled } from "@/lib/orders/auto-assign";
 import { orderListInclude } from "@/lib/orders/includes";
 import { notifyOrderStatus } from "@/lib/notifications/notify";
+import { broadcastOrderEvent } from "@/lib/realtime/broadcast";
 
-// List orders, scoped to the caller's role.
+// List orders, scoped by the requested context (verified against capabilities).
+// A user who is both a customer and an agent sees the right set per `scope`.
 export const GET = withApi(async (req: NextRequest) => {
   const profile = await requireProfile();
   const params = req.nextUrl.searchParams;
+  const caps = profile.roles;
+  const isAdmin = caps.includes("ADMIN");
+
+  const requested = params.get("scope");
+  let scope: "customer" | "agent" | "admin";
+  if (requested === "admin" && isAdmin) scope = "admin";
+  else if (requested === "agent" && (caps.includes("AGENT") || isAdmin)) scope = "agent";
+  else if (requested === "customer" && (caps.includes("CUSTOMER") || isAdmin)) scope = "customer";
+  else scope = isAdmin ? "admin" : caps.includes("AGENT") ? "agent" : "customer";
 
   let where: Prisma.OrderWhereInput = {};
 
-  if (profile.role === "CUSTOMER") {
+  if (scope === "customer") {
     where = { customerId: profile.id };
-  } else if (profile.role === "AGENT") {
+  } else if (scope === "agent") {
     const agent = await prisma.agentProfile.findUnique({
       where: { profileId: profile.id },
       select: { id: true },
     });
     where = { currentAgentId: agent?.id ?? "__none__" };
   } else {
-    // ADMIN — optional filters
     const status = params.get("status");
     const zoneId = params.get("zoneId");
     const agentId = params.get("agentId");
@@ -50,11 +61,9 @@ export const POST = withApi(async (req: NextRequest) => {
   const profile = await requireRole("CUSTOMER", "ADMIN");
   const input = orderCreateSchema.parse(await req.json());
 
+  const actingAsAdmin = profile.roles.includes("ADMIN");
   let customerId: string;
-  if (profile.role === "ADMIN") {
-    if (!input.customerId) {
-      throw badRequest("customerId is required when an admin creates an order");
-    }
+  if (actingAsAdmin && input.customerId) {
     const customer = await prisma.profile.findUnique({
       where: { id: input.customerId },
       select: { id: true },
@@ -69,9 +78,18 @@ export const POST = withApi(async (req: NextRequest) => {
     input,
     customerId,
     createdById: profile.id,
-    createdByRole: profile.role === "ADMIN" ? "ADMIN" : "CUSTOMER",
+    createdByRole: customerId !== profile.id ? "ADMIN" : "CUSTOMER",
   });
 
   await notifyOrderStatus(order.id);
+
+  // Auto-assign to the best available agent when the toggle is ON (no-op when
+  // OFF or when no agent is free — the order then waits for manual assignment).
+  const assignedAgentId = await autoAssignIfEnabled(order.id, profile.id);
+  if (assignedAgentId) {
+    await broadcastOrderEvent(order.trackingNumber, { status: "ASSIGNED" });
+    await notifyOrderStatus(order.id);
+  }
+
   return NextResponse.json({ data: order }, { status: 201 });
 });

@@ -114,7 +114,8 @@ model Profile {
   email     String   @unique
   name      String
   phone     String?
-  role      Role     @default(CUSTOMER)
+  role      Role     @default(CUSTOMER) // primary/highest role (kept for display + admin checks)
+  roles     Role[]   @default([CUSTOMER]) // capabilities — a user may be CUSTOMER and/or AGENT (and/or ADMIN)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -163,7 +164,8 @@ model Zone {
   description String?
   centerLat   Float?
   centerLng   Float?
-  polygon     Json? // optional GeoJSON polygon for the Tier-2 map editor
+  radiusKm    Decimal? @db.Decimal(6, 2) // circular zone radius; falls back to the defaultZoneRadiusKm Setting
+  polygon     Json? // optional GeoJSON polygon (unused; circles are the model)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -181,6 +183,10 @@ model Area {
   id        String   @id @default(cuid())
   name      String
   pincode   String   @unique
+  city      String?
+  state     String?
+  lat       Float?
+  lng       Float?
   zoneId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -189,6 +195,22 @@ model Area {
 
   @@index([zoneId])
   @@map("areas")
+}
+
+/// Reference data: known Indian pincodes with geo + metadata. Powers fuzzy area
+/// search, map placement, and heatmap aggregation. Seeded from a public dataset;
+/// serviceable pincodes are promoted into `Area` and assigned to a zone.
+model PincodeRef {
+  pincode  String  @id
+  area     String
+  city     String?
+  district String?
+  state    String?
+  lat      Float
+  lng      Float
+
+  @@index([state, city])
+  @@map("pincode_refs")
 }
 
 // ---------------------------------------------------------------------------

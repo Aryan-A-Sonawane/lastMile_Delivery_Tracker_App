@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { OrdersTable, type OrderRow } from "@/components/orders/orders-table";
 import { STATUS_LABELS } from "@/components/orders/status-badge";
+import { PageHeader } from "@/components/common/page-header";
+import { CsvImport, type CsvColumn } from "@/components/common/csv-import";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -19,16 +22,32 @@ import {
 type Zone = { id: string; name: string; code: string };
 const ALL = "ALL";
 
-export default function AdminOrdersPage() {
-  const [status, setStatus] = useState(ALL);
-  const [zoneId, setZoneId] = useState(ALL);
+const ORDER_CSV_COLUMNS: CsvColumn[] = [
+  { key: "customerEmail", label: "Customer email", required: true, example: "customer1@lastmile.test" },
+  { key: "pickupPincode", label: "Pickup pincode", required: true, example: "560001" },
+  { key: "dropPincode", label: "Drop pincode", required: true, example: "560041" },
+  { key: "pickupAddress", label: "Pickup address", required: true, example: "1 MG Road" },
+  { key: "dropAddress", label: "Drop address", required: true, example: "9 South Ave" },
+  { key: "lengthCm", label: "Length (cm)", required: true, example: "40" },
+  { key: "breadthCm", label: "Breadth (cm)", required: true, example: "30" },
+  { key: "heightCm", label: "Height (cm)", required: true, example: "20" },
+  { key: "actualWeightKg", label: "Weight (kg)", required: true, example: "3" },
+  { key: "orderType", label: "Order type", required: true, example: "B2C" },
+  { key: "paymentType", label: "Payment type", required: true, example: "PREPAID" },
+];
+
+function OrdersContent() {
+  const sp = useSearchParams();
+  const qc = useQueryClient();
+  const [status, setStatus] = useState(sp.get("status") ?? ALL);
+  const [zoneId, setZoneId] = useState(sp.get("zoneId") ?? ALL);
 
   const { data: zones } = useQuery({
     queryKey: ["zones"],
     queryFn: () => api.get<{ data: Zone[] }>("/api/admin/zones"),
   });
 
-  const qs = new URLSearchParams();
+  const qs = new URLSearchParams({ scope: "admin" });
   if (status !== ALL) qs.set("status", status);
   if (zoneId !== ALL) qs.set("zoneId", zoneId);
   const query = qs.toString();
@@ -40,17 +59,24 @@ export default function AdminOrdersPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Orders</h1>
-          <p className="text-sm text-muted-foreground">
-            All orders across customers, agents and zones.
-          </p>
-        </div>
-        <Button asChild size="sm">
-          <Link href="/admin/orders/new">New order</Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Orders"
+        description="All orders across customers, agents and zones."
+        actions={
+          <>
+            <CsvImport
+              title="Import orders"
+              columns={ORDER_CSV_COLUMNS}
+              endpoint="/api/admin/orders/bulk"
+              templateFilename="orders-template.csv"
+              onDone={() => qc.invalidateQueries({ queryKey: ["orders"] })}
+            />
+            <Button asChild size="sm">
+              <Link href="/admin/orders/new">New order</Link>
+            </Button>
+          </>
+        }
+      />
 
       <div className="flex flex-wrap gap-3">
         <Select value={status} onValueChange={setStatus}>
@@ -83,17 +109,16 @@ export default function AdminOrdersPage() {
       </div>
 
       {isLoading && <Skeleton className="h-40 w-full rounded-lg" />}
-      {isError && (
-        <p className="text-sm text-destructive">{(error as Error).message}</p>
-      )}
-      {data && (
-        <OrdersTable
-          orders={data.data}
-          basePath="/admin/orders"
-          showCustomer
-          showAgent
-        />
-      )}
+      {isError && <p className="text-sm text-destructive">{(error as Error).message}</p>}
+      {data && <OrdersTable orders={data.data} basePath="/admin/orders" showCustomer showAgent />}
     </div>
+  );
+}
+
+export default function AdminOrdersPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-96 w-full rounded-lg" />}>
+      <OrdersContent />
+    </Suspense>
   );
 }

@@ -64,3 +64,18 @@ export const rescheduleSchema = z.object({
 });
 
 export type RescheduleInput = z.infer<typeof rescheduleSchema>;
+
+/** One row of an orders CSV import (customer referenced by email). */
+export const orderCsvRowSchema = z.object({
+  customerEmail: z.string().trim().toLowerCase().email(),
+  pickupPincode: z.string().trim().regex(/^\d{4,10}$/, "invalid pincode"),
+  dropPincode: z.string().trim().regex(/^\d{4,10}$/, "invalid pincode"),
+  pickupAddress: z.string().trim().min(1),
+  dropAddress: z.string().trim().min(1),
+  lengthCm: z.coerce.number().positive(),
+  breadthCm: z.coerce.number().positive(),
+  heightCm: z.coerce.number().positive(),
+  actualWeightKg: z.coerce.number().positive(),
+  orderType: z.enum(["B2B", "B2C"]),
+  paymentType: z.enum(["PREPAID", "COD"]),
+});

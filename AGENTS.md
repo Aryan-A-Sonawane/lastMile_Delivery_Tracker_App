@@ -67,7 +67,47 @@ load, illegal transitions blocked, Realtime subscriber receives pushes.
 **Remaining: Phase 8 (analytics + map standout), Phase 9 (README + 800-word design doc + Vercel deploy —
 REQUIRED deliverables), Phase 10 (AI stretch).** See BLUEPRINT §15.
 
-### Local dev gotcha (NAT64/IPv6)
+### Admin panel overhaul (in progress)
+Decisions locked with the user:
+- **Location model = static India pincode dataset.** `PincodeRef` table holds `{pincode, area, city, district,
+  state, lat, lng}` (seed from a public dataset → `prisma/data/pincodes.json`, generated externally). Zones are
+  **circles** (`Zone.radiusKm`, per-zone override; global default = `defaultZoneRadiusKm` Setting). Point-in-circle
+  detection: `zoneForPoint` / `isWithinCircle` in `domain/zones.ts` (**smallest containing circle wins**). Order-time
+  detection still uses the deterministic `Area.pincode → zoneId` lookup; circles power the admin map UX + heatmap.
+  `Area` now carries `city/state/lat/lng` (filled from PincodeRef on onboarding).
+- **Design system:** responsive **AdminShell** (`components/admin/admin-shell.tsx`, sidebar → mobile `Sheet` drawer)
+  + shared primitives in `components/common/` (`PageHeader`, `StatCard`, `EmptyState`). Build every admin tab
+  mobile-first on these. shadcn added: sheet, switch, command, popover, tooltip.
+- **CSV import** (`CsvImport` — to build): reuse for **areas** (bulk pincode→zone), **agents**, **orders**, rate cards.
+- **Zone radius:** variable per-zone + global default; overlap tiebreak = smallest circle, then nearest center.
+
+**Admin overhaul — ALL DONE (live-verified):**
+- ✅ Foundation: responsive `AdminShell` + `components/common/*` primitives + location model (PincodeRef, circular
+  zones, `zoneForPoint`).
+- ✅ **Zones** (`admin/zones` + `ZoneMap`, pin+radius). ✅ **Areas** (fuzzy `PincodeRef` search + containment +
+  create-zone; `/api/admin/pincodes/{search,facets}`).
+- ✅ **Agents** (CRUD, clickable rows→orders, `create-agent.ts` w/ temp-password email, delete guard).
+- ✅ **Analytics v2** (`/api/admin/analytics` with from/to/granularity + deltas + timeseries + top agents; page with
+  period/granularity filters, gradient area charts, clickable KPIs). ✅ Admin orders read URL filters (Suspense).
+- ✅ **Heatmap** (`admin/heatmap` + `heat-map.tsx` leaflet.heat; `/api/admin/analytics/heatmap`; metric/period + legend).
+- ✅ **Admin invites** (`/api/admin/admins`, `create-admin.ts` create-or-promote; Administrators section in Settings; revoke=demote).
+- ✅ **Active toggles** on rate cards + COD (`ResourceManager` `toggle` prop + Switch).
+- ✅ **Reusable `CsvImport`** (`components/common/csv-import.tsx`, papaparse) wired into **Agents / Areas / Orders**
+  (`/api/admin/{agents,areas,orders}/bulk`).
+
+**Data scripts (run in order):**
+1. `npm run db:seed` — config + demo users (idempotent).
+2. `npm run db:seed-pincodes` — loads `prisma/data/pincodes.json` into `PincodeRef` (1,391 across 13 states).
+3. `npm run db:provision` — nationwide: one circular zone per city + all pincodes as serviceable Areas (idempotent,
+   deterministic zone codes). → 37 zones, 1,391 areas.
+4. `npm run db:seed-orders [n]` — ~n realistic orders over 90 days across serviceable areas (fixed to real APIs).
+
+**Bulk-load stability:** on this NAT64 network the transaction pooler drops connections under sustained writes, so
+`seed-pincodes`/`provision` use the **session pooler** (`DIRECT_URL`) + per-chunk retry. `seed-orders` per-order
+try/catch tolerates transient drops (some orders skip). 55 tests green. Order-time zone detection stays deterministic
+(`Area.pincode → zone`).
+
+## Local dev gotcha (NAT64/IPv6)
 This machine's network resolves the Supabase pooler to NAT64 IPv6 addresses that Prisma's engine can't use
 (`P1001`). Local `.env` `DATABASE_URL`/`DIRECT_URL` are therefore pinned to a pooler **IPv4 + `sslmode=require`**
 (hostname versions kept as comments for Vercel). If the DB becomes unreachable locally, the pinned ELB IP may

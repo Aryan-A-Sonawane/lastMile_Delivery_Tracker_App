@@ -27,6 +27,48 @@ export function resolveZoneIdByPincode(
   return areas.find((a) => a.pincode === normalized)?.zoneId ?? null;
 }
 
+/** A circular zone (center + radius). Radius is already resolved (per-zone
+ * override or the global default) by the caller. */
+export type ZoneCircle = {
+  id: string;
+  centerLat: number;
+  centerLng: number;
+  radiusKm: number;
+};
+
+/** Whether a point lies within `radiusKm` of a center (great-circle). */
+export function isWithinCircle(
+  point: LatLng,
+  center: LatLng,
+  radiusKm: number,
+): boolean {
+  return haversineKm(point, center) <= radiusKm;
+}
+
+/**
+ * Which zone a point falls into. When circles overlap, the **smallest containing
+ * circle wins** (most specific zone); ties break by nearest center. Returns null
+ * if the point is outside every zone.
+ */
+export function zoneForPoint(
+  point: LatLng,
+  zones: ZoneCircle[],
+): string | null {
+  const containing = zones
+    .map((z) => ({
+      z,
+      dist: haversineKm(point, { lat: z.centerLat, lng: z.centerLng }),
+    }))
+    .filter((c) => c.dist <= c.z.radiusKm);
+
+  if (containing.length === 0) return null;
+
+  containing.sort(
+    (a, b) => a.z.radiusKm - b.z.radiusKm || a.dist - b.dist,
+  );
+  return containing[0].z.id;
+}
+
 const EARTH_RADIUS_KM = 6371;
 const toRad = (deg: number) => (deg * Math.PI) / 180;
 
